@@ -11,7 +11,3 @@ file(MAKE_DIRECTORY output)
 
 # Add third party libraries
 add_subdirectory(ThirdParty)
-
-# Add vulkan framework
-#add_subdirectory(framework)
-add_subdirectory(samples)
