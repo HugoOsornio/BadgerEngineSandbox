@@ -1,5 +1,5 @@
 # 2021: Render Badger: Badger Engine Tests
-# Butchered from vulkan_samples CmakeLists.txt
+# Butchered from vulkan_samples and Sascha Willems CmakeLists.txt
 #
 
 cmake_minimum_required(VERSION 3.10)
@@ -7,8 +7,76 @@ set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
 project(BadgerEngineSandbox)
 
-# create output folder
-file(MAKE_DIRECTORY output)
-
 # Add third party libraries
 add_subdirectory(ThirdParty)
+
+# Use FindVulkan module added with CMAKE 3.7
+if (NOT CMAKE_VERSION VERSION_LESS 3.7.0)
+	message(STATUS "Using module to find Vulkan")
+	find_package(Vulkan)
+endif()
+
+# Add VUlkan to the project
+IF(WIN32)
+	IF (NOT Vulkan_FOUND)
+		find_library(Vulkan_LIBRARY NAMES vulkan-1 vulkan PATHS ${CMAKE_SOURCE_DIR}/libs/vulkan)
+		IF (Vulkan_LIBRARY)
+			set(Vulkan_FOUND ON)
+			MESSAGE("Using bundled Vulkan library version")
+		ENDIF()
+	ENDIF()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_WIN32_KHR")
+ELSEIF(LINUX)
+	IF (NOT Vulkan_FOUND)
+		find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "${CMAKE_SOURCE_DIR}/libs/vulkan" REQUIRED)
+		IF (Vulkan_LIBRARY)
+			set(Vulkan_FOUND ON)
+			MESSAGE("Using bundled Vulkan library version")
+		ENDIF()
+	ENDIF()
+	find_package(Threads REQUIRED)
+	IF(USE_D2D_WSI)
+		MESSAGE("Using direct to display extension...")
+		add_definitions(-D_DIRECT2DISPLAY)
+	ELSEIF(USE_DIRECTFB_WSI)
+		find_package(DirectFB REQUIRED)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_DIRECTFB_EXT")
+		include_directories(${DIRECTFB_INCLUDE_DIR})
+	ELSEIF(USE_WAYLAND_WSI)
+		find_program(PKG_CONFIG pkg-config)
+		if (NOT PKG_CONFIG)
+			message(FATAL_ERROR "pkg-config binary not found")
+		endif ()
+		find_package(Wayland REQUIRED)
+		if (NOT WAYLAND_FOUND)
+			message(FATAL_ERROR "Wayland development package not found")
+		endif ()
+		pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+		if (NOT WAYLAND_PROTOCOLS_FOUND)
+			message(FATAL_ERROR "Wayland protocols package not found")
+		endif ()
+		find_program(WAYLAND_SCANNER wayland-scanner)
+		if (NOT WAYLAND_SCANNER)
+			message(FATAL_ERROR "wayland-scanner binary not found")
+		endif ()
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_WAYLAND_KHR")
+		include_directories(${WAYLAND_INCLUDE_DIR})
+		execute_process(COMMAND ${PKG_CONFIG} --variable=pkgdatadir wayland-protocols OUTPUT_VARIABLE protocol_dir OUTPUT_STRIP_TRAILING_WHITESPACE)
+		execute_process(COMMAND ${WAYLAND_SCANNER} client-header ${protocol_dir}/stable/xdg-shell/xdg-shell.xml ${CMAKE_BINARY_DIR}/xdg-shell-client-protocol.h
+				COMMAND ${WAYLAND_SCANNER} private-code ${protocol_dir}/stable/xdg-shell/xdg-shell.xml ${CMAKE_BINARY_DIR}/xdg-shell-protocol.c)
+		include_directories(${CMAKE_BINARY_DIR})
+	ELSE(USE_D2D_WSI)
+		find_package(XCB REQUIRED)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_XCB_KHR")
+	ENDIF(USE_D2D_WSI)
+ENDIF(WIN32)
+
+IF (NOT Vulkan_FOUND)
+	message(FATAL_ERROR "Could not find Vulkan library!")
+ELSE()
+	message(STATUS ${Vulkan_LIBRARY})
+ENDIF()
+
+include_directories(${Vulkan_INCLUDE_DIRS})
+add_executable(BadgerSandbox SandBox/main.cpp)
+target_link_libraries(BadgerSandbox ${Vulkan_LIBRARY} glfw)
