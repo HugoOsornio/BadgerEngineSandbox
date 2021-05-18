@@ -78,5 +78,5 @@ ELSE()
 ENDIF()
 
 include_directories(${Vulkan_INCLUDE_DIRS})
-add_executable(ApiWithoutSecrets SandBox/ApiWithoutSecrets.cpp)
+add_executable(ApiWithoutSecrets SelfContainedSamples/ApiWithoutSecrets.cpp)
 target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)

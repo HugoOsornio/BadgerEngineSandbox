@@ -106,9 +106,36 @@ void CreateLogicalDevice()
     That’s why we also have to check if a given physical device supports the type of operations we want to perform. 
     We can also perform one type of operation on one device and another type of operation on another device, but we have to check if we can.
    */
+  uint32_t suitablePhysicalDeviceIndex = 0xFFFFFFFF;
+  uint32_t suitableQueueFamilyIndex = 0xFFFFFFFF;
+  for (uint32_t i = 0; i < physicalDevices.size(); i++)
+  {
+      uint32_t queueFamiliesCount = 0;
+      vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamiliesCount, nullptr);
+      if (queueFamiliesCount == 0)
+      {
+          std::cout << "Physical device " << physicalDevices[i] << " doesn't have any queue families!" << std::endl;
+          continue;
+      }
 
-
-
+      std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamiliesCount);
+      vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamiliesCount, &queueFamilyProperties[0]);
+      for (uint32_t j = 0; j < queueFamiliesCount; ++j) 
+      {
+          if ((queueFamilyProperties[i].queueCount > 0) &&
+              (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) 
+          {
+              suitablePhysicalDeviceIndex = i;
+              suitableQueueFamilyIndex = j;
+              break;
+          }
+      }
+  }
+  
+  if (suitablePhysicalDeviceIndex == 0xFFFFFFFF || suitableQueueFamilyIndex == 0xFFFFFFFF)
+  {
+    // Todo: Throw an error as we didn't find a suitable device nor queue family
+  }
   
 }
 
