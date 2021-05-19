@@ -1,5 +1,4 @@
-#include "WindowSystemFactory.hpp"
-#include "WindowSystem.hpp"
+#include "WindowFactory.hpp"
 
 #if defined(_WIN32)
 #include "WindowWin32.hpp"
@@ -9,7 +8,7 @@ namespace BadgerSandbox
 }
 #elif defined(__linux__)
 #include "WindowLinux.hpp"
-namespace Fsl
+namespace BadgerSandbox
 {
   using Window = WindowLinux;
 }

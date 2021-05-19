@@ -1,4 +1,5 @@
 #include "WindowWin32.hpp"
+#include <iostream>
 
 namespace BadgerSandbox
 {
@@ -11,18 +12,19 @@ namespace BadgerSandbox
     : windowSize(_windowSize)
 	, windowPosition(_windowPosition)
   {
-    
+	  std::cout << "Here I will create a Window for windows" << std::endl;
   }
 
    WindowWin32::~WindowWin32()
    {
 	   
    }
-
-
-  PlatformNativeWindowType VulkanNativeWindowWin32::GetWindowType() const
-  {
-    return GetPlatformWindow();
-  }
-}    // namespace Fsl
-#endif
+   std::array<uint32_t, 2> WindowWin32::GetWindowSize()
+   {
+	   return std::array<uint32_t, 2>();
+   }
+   std::array<uint32_t, 2> WindowWin32::GetWindowPosition()
+   {
+	   return std::array<uint32_t, 2>();
+   }
+}

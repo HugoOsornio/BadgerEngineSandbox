@@ -82,4 +82,5 @@ add_executable(ApiWithoutSecrets SelfContainedSamples/ApiWithoutSecrets.cpp)
 target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)
 
 add_executable(MultithreadedModels Sandbox/MultithreadedModels/MultithreadedModels.cpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
+target_include_directories(MultithreadedModels PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window>)
 target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)
