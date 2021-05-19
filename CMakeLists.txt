@@ -80,3 +80,6 @@ ENDIF()
 include_directories(${Vulkan_INCLUDE_DIRS})
 add_executable(ApiWithoutSecrets SelfContainedSamples/ApiWithoutSecrets.cpp)
 target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)
+
+add_executable(MultithreadedModels Sandbox/MultithreadedModels/MultithreadedModels.cpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
+target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)
