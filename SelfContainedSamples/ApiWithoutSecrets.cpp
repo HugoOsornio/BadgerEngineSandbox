@@ -5,6 +5,8 @@
 
 GLFWwindow* window;
 VkInstance instance;
+VkDevice device;
+VkQueue queue;
 
 std::vector<const char*> getRequiredExtensions() 
 {
@@ -110,6 +112,9 @@ void CreateLogicalDevice()
   uint32_t suitableQueueFamilyIndex = 0xFFFFFFFF;
   for (uint32_t i = 0; i < physicalDevices.size(); i++)
   {
+      /*  We must first check how many different queue families are available in a given physical device. This is done in a similar way to enumerating physical devices. First we call vkGetPhysicalDeviceQueueFamilyProperties() with the last parameter set to null.
+          This way, in a “queueFamiliesCount” a variable number of different queue families is stored.*/
+
       uint32_t queueFamiliesCount = 0;
       vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamiliesCount, nullptr);
       if (queueFamiliesCount == 0)
@@ -117,6 +122,14 @@ void CreateLogicalDevice()
           std::cout << "Physical device " << physicalDevices[i] << " doesn't have any queue families!" << std::endl;
           continue;
       }
+
+      
+      /*Next we can prepare a place for this number of queue families’ properties (if we want to—the mechanism is similar to enumerating physical devices). 
+        Next we call the function again and the properties for each queue family are stored in a provided array.
+        The properties of each queue family contain queue flags, the number of available queues in this family, time stamp support, and image transfer granularity. 
+        Right now, the most important part is the number of queues in the family and flags. Flags (which is a bitfield) define which types of operations are supported by a given queue family (more than one may be supported).
+        It can be graphics, compute, transfer (memory operations like copying), and sparse binding (for sparse resources like mega-textures) operations. Other types may appear in the future.
+        In our example we check for graphics operations support, and if we find it we can use the given physical device. Remember that we also have to remember the selected family index. After we chose the physical device we can create logical device that will represent it in the rest of our application, as shown in the example:*/
 
       std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamiliesCount);
       vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamiliesCount, &queueFamilyProperties[0]);
@@ -135,7 +148,50 @@ void CreateLogicalDevice()
   if (suitablePhysicalDeviceIndex == 0xFFFFFFFF || suitableQueueFamilyIndex == 0xFFFFFFFF)
   {
     // Todo: Throw an error as we didn't find a suitable device nor queue family
+      return;
   }
+
+  std::vector<float> queuePriorities = { 1.0f };
+
+  VkDeviceQueueCreateInfo queueCreateInfo = {
+    VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,     // VkStructureType              sType
+    nullptr,                                        // const void                  *pNext
+    0,                                              // VkDeviceQueueCreateFlags     flags
+    suitableQueueFamilyIndex,                    // uint32_t                     queueFamilyIndex
+    static_cast<uint32_t>(queuePriorities.size()),  // uint32_t                     queueCount
+    & queuePriorities[0]                            // const float                 *pQueuePriorities
+  };
+
+  VkDeviceCreateInfo deviceCreateInfo = {
+    VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,           // VkStructureType                    sType
+    nullptr,                                        // const void                        *pNext
+    0,                                              // VkDeviceCreateFlags                flags
+    1,                                              // uint32_t                           queueCreateInfoCount
+    & queueCreateInfo,                             // const VkDeviceQueueCreateInfo     *pQueueCreateInfos
+    0,                                              // uint32_t                           enabledLayerCount
+    nullptr,                                        // const char * const                *ppEnabledLayerNames
+    0,                                              // uint32_t                           enabledExtensionCount
+    nullptr,                                        // const char * const                *ppEnabledExtensionNames
+    nullptr                                         // const VkPhysicalDeviceFeatures    *pEnabledFeatures
+  };
+
+  /*
+    Queues are created automatically along with the device. To specify what types of queues we want to enable, 
+    we provide an array of additional VkDeviceQueueCreateInfo structures. 
+    This array must contain queueCreateInfoCount elements. 
+    Each element in this array must refer to a different queue family; we refer to a specific queue family only once.
+  */
+
+  if (vkCreateDevice(physicalDevices[suitablePhysicalDeviceIndex], &deviceCreateInfo, nullptr, &device) != VK_SUCCESS) 
+  {
+      std::cout << "Could not create Vulkan device!" << std::endl;
+      return;
+  }
+
+  // Now that we have created a device, we need a queue that we can submit some commands to for processing. 
+  // Queues are automatically created with a logical device, but in order to use them we must specifically ask for a queue handle. 
+  // This is done with vkGetDeviceQueue() like this:
+  vkGetDeviceQueue(device, suitableQueueFamilyIndex, 0, &queue);
   
 }
 
