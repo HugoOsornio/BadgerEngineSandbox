@@ -79,6 +79,7 @@ add_executable(ApiWithoutSecrets_Part2 SelfContainedSamples/ApiWithoutSecrets_Pa
 target_link_libraries(ApiWithoutSecrets_Part2 ${Vulkan_LIBRARY} glfw)
 
 add_executable(ApiWithoutSecrets_Part3 SelfContainedSamples/ApiWithoutSecrets_Part3.cpp)
+target_compile_definitions(ApiWithoutSecrets_Part3 PUBLIC -DAPI_WITHOUT_SECRETS_PART3_CONTENT="${CMAKE_SOURCE_DIR}/SelfContainedSamples/ApiWithoutSecrets_Part3Content/")
 target_link_libraries(ApiWithoutSecrets_Part3 ${Vulkan_LIBRARY} glfw)
 
 add_executable(MultithreadedModels Sandbox/MultithreadedModels/MultithreadedModels.cpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
