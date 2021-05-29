@@ -1,0 +1,6 @@
+﻿---
+BasedOnStyle: Mozilla
+BinPackParameters: 'false'
+TabWidth: '0'
+
+...
