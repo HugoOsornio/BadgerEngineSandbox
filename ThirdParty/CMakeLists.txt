@@ -78,3 +78,14 @@ add_library(imgui STATIC ${IMGUI_FILES})
 target_include_directories(imgui PUBLIC ${IMGUI_DIR})
 
 set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
+
+# RapidVulkan
+add_library(RapidVulkan INTERFACE)
+set(RAPIDVULKAN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/RapidVulkan/include/RapidVulkan)
+target_include_directories(RapidVulkan INTERFACE ${RAPIDVULKAN_DIR})
+
+# tinygltf
+add_library(tinygltf INTERFACE)
+set(TINYGLTF_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tinygltf)
+target_sources(tinygltf INTERFACE ${TINYGLTF_DIR}/tiny_gltf.h ${TINYGLTF_DIR}/json.hpp)
+target_include_directories(tinygltf INTERFACE ${TINYGLTF_DIR})
