@@ -1,24 +1,25 @@
 #include "Window.hpp"
 
-void InitWindow(GLFWwindow* window, std::vector<std::string>& presentationExtensions)
+namespace BadgerSandbox
 {
-  glfwInit();
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  window = glfwCreateWindow(1920, 1080, "UdacityFinalProject", nullptr, nullptr);
-  presentationExtensions = GetPresentationExtensions();
-}
+	void WindowInit(GLFWwindow* window)
+	{
+		glfwInit();
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		window = glfwCreateWindow(1920, 1080, "UdacityFinalProject", nullptr, nullptr);
+	}
 
-std::vector<std::string> GetPresentationExtensions()
-{
-  uint32_t glfwExtensionCount = 0;
-  const char** glfwExtensions;
-  glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-  std::vector<std::string> localExtensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-  return localExtensions;
-}
+	std::vector<std::string> WindowGetPresentationExtensions()
+	{
+		uint32_t glfwExtensionCount = 0;
+		const char** glfwExtensions;
+		glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+		std::vector<std::string> localExtensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+		return localExtensions;
+	}
 
-bool ShouldClose(GLFWwindow* window)
-{
-  return glfwWindowShouldClose(window);
+	bool WindowShouldClose(GLFWwindow* window)
+	{
+		return glfwWindowShouldClose(window);
+	}
 }
-

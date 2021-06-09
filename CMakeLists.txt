@@ -94,7 +94,7 @@ add_executable(ApiWithoutSecrets_Part6 SelfContainedSamples/ApiWithoutSecrets_Pa
 target_compile_definitions(ApiWithoutSecrets_Part6 PUBLIC -DAPI_WITHOUT_SECRETS_PART6_CONTENT="${CMAKE_SOURCE_DIR}/SelfContainedSamples/ApiWithoutSecrets_Part6Content/")
 target_link_libraries(ApiWithoutSecrets_Part6 ${Vulkan_LIBRARY} glfw)
 
-add_executable(UdacityFinalProject SelfContainedSamples/UdacityFinalProject/UdacityFinalProject.cpp SelfContainedSamples/UdacityFinalProject/Window.cpp SelfContainedSamples/UdacityFinalProject/Instance.cpp SelfContainedSamples/UdacityFinalProject/Device.cpp )
+add_executable(UdacityFinalProject SelfContainedSamples/UdacityFinalProject/UdacityFinalProject.cpp SelfContainedSamples/UdacityFinalProject/Window.cpp)
 target_compile_definitions(UdacityFinalProject PUBLIC -DUDACITY_FINAL_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/SelfContainedSamples/UdacityFinalProject/Content/")
 target_link_libraries(UdacityFinalProject ${Vulkan_LIBRARY} glfw RapidVulkan tinygltf glm)
 

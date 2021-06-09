@@ -81,7 +81,7 @@ set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
 
 # RapidVulkan
 add_library(RapidVulkan INTERFACE)
-set(RAPIDVULKAN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/RapidVulkan/include/RapidVulkan)
+set(RAPIDVULKAN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/RapidVulkan/include)
 target_include_directories(RapidVulkan INTERFACE ${RAPIDVULKAN_DIR})
 
 # tinygltf
