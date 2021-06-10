@@ -448,7 +448,7 @@ namespace BadgerSandbox
 			surfaceTransform = surfaceCapabilities.currentTransform;
 		}
 
-		VkPresentModeKHR presentMode;
+		VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 		for (VkPresentModeKHR& pm : presentModes)
 		{
 			if (pm == VK_PRESENT_MODE_MAILBOX_KHR)
