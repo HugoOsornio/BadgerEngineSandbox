@@ -1,12 +1,15 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "Window.hpp"
 
+// Rubric 5: Memory Management:
 // Rapid Vulkan wraps Vulkan Objects and eases RAII implementation
+// All RapidVulkan Objects declared in the class, will be automatically destroyed
 #include <RapidVulkan/Instance.hpp>
 #include <RapidVulkan/Device.hpp>
 #include <RapidVulkan/SwapchainKHR.hpp>
@@ -26,66 +29,115 @@
 
 namespace BadgerSandbox
 {
-  GLFWwindow* window;
-  std::vector<std::string> presentationExtensions;
-  std::unordered_map<std::string, bool> requestedExtensions;
-  std::vector<VkExtensionProperties> availableExtensions;
+    
+    struct DestroyGLFWwindow
+    {
+        // Rubric 5: Memory Management: I wrapped a GLFWwindow* pointer in a smart pointer to ensure it is destroyed when the class is destroyed.
+        void operator()(GLFWwindow* ptr)
+        {
+            glfwDestroyWindow(ptr);
+        }
+    };
 
-  RapidVulkan::Instance instance;
-  uint32_t suitablePhysicalDeviceIndex = 0xFFFFFFFF;
-  VkPhysicalDevice selectedPhysicalDevice;
+    // Rubric 4: Object Oriented Programming: Only the appropriate functions are exposed to the class user: 
+    // Constructor, destructor, Draw and get window pointer function
+    class SandboxApplication
+	{
+	private:
+        // Rubric 5: Memory Management: I wrapped a GLFWwindow* pointer in a smart pointer to ensure it is destroyed when the class is destroyed.
+        std::unique_ptr<GLFWwindow, DestroyGLFWwindow> window;
+        std::vector<std::string> presentationExtensions;
+        std::unordered_map<std::string, bool> requestedExtensions;
+        std::vector<VkExtensionProperties> availableExtensions;
 
-  RapidVulkan::Device device;
-  uint32_t suitableQueueFamilyIndex = 0xFFFFFFFF;
-  VkQueue queue;
+        RapidVulkan::Instance instance;
+        uint32_t suitablePhysicalDeviceIndex;
+        VkPhysicalDevice selectedPhysicalDevice;
 
-  VkSurfaceKHR surface;
-  VkSurfaceFormatKHR selectedSurfaceFormat;
-  VkExtent2D swapchainExtent;
-  RapidVulkan::SwapchainKHR swapchain;
-  
-  RapidVulkan::RenderPass renderPass;
-  std::vector<RapidVulkan::ImageView> swapchainImageViews;
-  std::vector<RapidVulkan::Framebuffer> framebuffers;
+        RapidVulkan::Device device;
+        uint32_t suitableQueueFamilyIndex;
+        VkQueue queue;
 
-  std::vector<RapidVulkan::Semaphore> imageAvailable;
-  std::vector<RapidVulkan::Semaphore> renderingFinished;
+        VkSurfaceKHR surface;
+        VkSurfaceFormatKHR selectedSurfaceFormat;
+        VkExtent2D swapchainExtent;
+        RapidVulkan::SwapchainKHR swapchain;
 
-  RapidVulkan::ShaderModule vertexShaderModule;
-  RapidVulkan::ShaderModule fragmentShaderModule;
+        RapidVulkan::RenderPass renderPass;
+        std::vector<RapidVulkan::ImageView> swapchainImageViews;
+        std::vector<RapidVulkan::Framebuffer> framebuffers;
 
-  RapidVulkan::GraphicsPipeline graphicsPipeline;
+        std::vector<RapidVulkan::Semaphore> imageAvailable;
+        std::vector<RapidVulkan::Semaphore> renderingFinished;
 
-  RapidVulkan::CommandPool graphicsCommandPool;
-  RapidVulkan::CommandBuffers graphicsCommandBuffers;
+        RapidVulkan::ShaderModule vertexShaderModule;
+        RapidVulkan::ShaderModule fragmentShaderModule;
 
-  VkBuffer vertexBuffer;
-  VkDeviceMemory vertexBufferMemory;
+        RapidVulkan::GraphicsPipeline graphicsPipeline;
 
-  static const size_t renderResourcesCount = 3;
-  std::vector<VkFence> fences;
+        RapidVulkan::CommandPool graphicsCommandPool;
+        RapidVulkan::CommandBuffers graphicsCommandBuffers;
 
-  struct VertexData
-  {
-	  float   x, y, z, w;
-	  float   u, v;
-  };
+        VkBuffer vertexBuffer;
+        VkDeviceMemory vertexBufferMemory;
 
-  VkImage textureImage;
-  VkImageView textureImageView;
-  VkDeviceMemory textureMemory;
-  VkSampler textureSampler;
+        const size_t renderResourcesCount;
+        std::vector<VkFence> fences;
 
-  VkImage depthImage;
-  VkDeviceMemory depthImageMemory;
-  VkImageView depthImageView;
+        VkImage depthImage;
+        VkDeviceMemory depthImageMemory;
+        VkImageView depthImageView;
 
-  VkDescriptorSetLayout dsLayout;
-  VkDescriptorPool dPool;
-  VkDescriptorSet ds;
-  VkPipelineLayout pipelineLayout;
+        VkDescriptorSetLayout dsLayout;
+        VkDescriptorPool dPool;
+        VkDescriptorSet ds;
+        VkPipelineLayout pipelineLayout;
 
-  // Sascha's objects needed to load a glTF model:
-  vks::VulkanDevice saschaDevice;
-  Camera saschaCamera;
-}
+        // Sascha's objects needed to load a glTF model:
+        vks::VulkanDevice saschaDevice;
+        Camera saschaCamera;
+
+        uint32_t currentSelectedModel;
+
+        void AllocateBufferMemory(VkBuffer& buffer, const VkMemoryPropertyFlags& memoryProperty, VkDeviceMemory& memory);
+        void AllocateDescriptorSetNode();
+        void AllocateDescriptorSetScene();
+        void CreateBuffer(const VkDeviceSize& size, VkBufferUsageFlags usage, VkBuffer& bufferToCreate, VkDeviceMemory& memory, const VkMemoryPropertyFlags& memoryProperty);
+        void CreateDepthImage();
+        void CreateDescriptorPool();
+        void CreateDescriptorSetLayoutNode();
+        void CreateDescriptorSetLayoutScene();
+        void CreateFences();
+        void CreateGraphicsCommandsBuffers();
+        void CreateGraphicsPipeline();
+        void CreateImageView(const VkImage& image, VkImageView& imageView);
+        VkImageView CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+        void CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+        void CreateInstance();
+        void CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView);
+        void CreateLogicalDevice();
+        void CreateRenderPass();
+        void CreateSemaphores();
+        void CreateSurface();
+        void CreateSwapchain();
+        void CreateSwapchainImageViews();
+        std::unique_ptr<GLFWwindow, DestroyGLFWwindow> CreateVulkanWindow();
+        VkFormat FindDepthFormat();
+        uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        VkFormat FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+        void LoadModel1();
+        void LoadModel2();
+        void LoadModel3();
+        void PopulateSaschaWillemsStructures();
+        void RecordJustInTimeCommandBuffers(const size_t& resourceIndex);
+        void UpdateDescriptorSetScene();
+
+	public:
+        SandboxApplication();
+		~SandboxApplication();
+        void Draw();
+        GLFWwindow* GetRawWindow() { return window.get(); }
+	};
+	
+
+  }

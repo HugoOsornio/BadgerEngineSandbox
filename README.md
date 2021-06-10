@@ -2,6 +2,30 @@
 Hugo Osornio
 
 This Sandbox was initially created as the final project for Udacity's C++ Nano Degree Program.
+For the Udacity Reviewer:
+
+Search for "Rubric 3", "Rubric 4", "Rubric 5" and "Rubric 6" in the UdacityFinalProject.hpp and UdacityFinalProject.cpp files
+## Rubric 3: The program reads data from a file (UdacityFinalProject.cpp)
+
+The program reads 3 geometry models to populate the Vertex Buffers.
+
+It also reads a pair of spv binary files for the shaders.
+
+## Rubric 4: Object Oriented Programming (UdacityFinalProject.hpp)
+
+Only the appropriate functions are exposed to the user: Constructor, destructor, Draw and get window pointer function
+
+## Rubric 5: Memory Management (UdacityFinalProhect.cpp)
+
+I wrapped a GLFWwindow* pointer in a smart pointer to ensure it is destroyed when the class is destroyed.
+
+RapidVulkan wraps Vulkan Objects and eases RAII implementation
+
+All RapidVulkan Objects declared in the class, will be automatically destroyed
+
+## Rubric 6: Concurrency
+
+Each model is loaded in a different thread thread
 
 <hr>
 

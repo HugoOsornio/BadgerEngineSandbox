@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include "../RenderBadger.h"
@@ -59,7 +60,8 @@ namespace BadgerSandbox
 	};
 
 	/////////////////////////////
-	Models g_models;
+	//Models g_models;
+	std::vector<Models> g_models;
 	UBOMatrices g_shaderValuesScene;
 	shaderValuesParams g_shaderParams;
 	VkPipelineLayout g_pipelineLayout;
@@ -101,19 +103,19 @@ namespace BadgerSandbox
 		}
 	}
 
-	void renderNode(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode, VkCommandBuffer cmdBuffer)
+	void RenderNode(const vkglTF::Node& node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout)
 	{
-		if (node->mesh)
+		if (node.mesh)
 		{
 			// Render mesh primitives
-			for (vkglTF::Primitive* primitive : node->mesh->primitives)
+			for (vkglTF::Primitive* primitive : node.mesh->primitives)
 			{
 				//if (primitive->material.alphaMode == alphaMode)
 				{
 					const std::vector<VkDescriptorSet> descriptorsets = 
 					{
 					  g_descriptorSets[cbIndex].scene,
-					  node->mesh->uniformBuffer.descriptorSet,
+					  node.mesh->uniformBuffer.descriptorSet,
 					};
 					vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,
 						static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
@@ -129,16 +131,13 @@ namespace BadgerSandbox
 				}
 			}
 		};
-		for (auto child : node->children)
+		for (auto child : node.children)
 		{
-			renderNode(child, cbIndex, alphaMode, cmdBuffer);
+			RenderNode(*child, cbIndex, alphaMode, cmdBuffer, pipelineLayout);
 		}
 	}
 	
-	
-	VkFormat FindDepthFormat();
-
-	void CreateInstance()
+	void SandboxApplication::CreateInstance()
 	{
 		VkApplicationInfo appInfo{};
 		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -194,22 +193,22 @@ namespace BadgerSandbox
 	      "VK_LAYER_KHRONOS_validation"
 		};
 		
-		createInfo.enabledLayerCount = 1;
-		createInfo.ppEnabledLayerNames = validationLayers.data();
+		createInfo.enabledLayerCount = 0;
+		createInfo.ppEnabledLayerNames = nullptr;
 		createInfo.pNext = nullptr;
 
 		instance.Reset(createInfo);
 	}
 
-	void CreateSurface()
+	void SandboxApplication::CreateSurface()
 	{
-		if (glfwCreateWindowSurface(instance.Get(), window, nullptr, &surface) != VK_SUCCESS)
+		if (glfwCreateWindowSurface(instance.Get(), GetRawWindow(), nullptr, &surface) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create window surface!");
 		}
 	}
 
-	void CreateLogicalDevice()
+	void SandboxApplication::CreateLogicalDevice()
 	{
 		uint32_t numDevices = 0;
 		if ((vkEnumeratePhysicalDevices(instance.Get(), &numDevices, nullptr) != VK_SUCCESS) ||
@@ -300,7 +299,7 @@ namespace BadgerSandbox
 		vkGetDeviceQueue(device.Get(), suitableQueueFamilyIndex, 0, &queue);
 	}
 
-	void CreateSemaphores()
+	void SandboxApplication::CreateSemaphores()
 	{
 		VkSemaphoreCreateInfo semaphoreCreateInfo =
 		{
@@ -319,7 +318,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateFences()
+	void SandboxApplication::CreateFences()
 	{
 		VkFenceCreateInfo fenceCreateInfo =
 		{
@@ -339,7 +338,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateSwapchain()
+	void SandboxApplication::CreateSwapchain()
 	{
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
 		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(selectedPhysicalDevice, surface, &surfaceCapabilities) != VK_SUCCESS)
@@ -403,7 +402,7 @@ namespace BadgerSandbox
 		{
 			int32_t width;
 			int32_t height;
-			glfwGetWindowSize(window, &width, &height);
+			glfwGetWindowSize(window.get(), &width, &height);
 			swapchainExtent.width = width;
 			swapchainExtent.height = height;
 			if (swapchainExtent.width < surfaceCapabilities.minImageExtent.width) {
@@ -494,7 +493,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateRenderPass()
+	void SandboxApplication::CreateRenderPass()
 	{
 		std::array<VkAttachmentDescription, 2> attachmentDescriptions 
 		{ {
@@ -579,7 +578,7 @@ namespace BadgerSandbox
 		renderPass.Reset(device.Get(), renderPassCreateInfo);
 	}
 
-	void CreateSwapchainImageViews()
+	void SandboxApplication::CreateSwapchainImageViews()
 	{
 		uint32_t numberOfSwapchainImages = 0;
 		swapchain.GetSwapchainImagesKHR(&numberOfSwapchainImages, nullptr);
@@ -614,8 +613,9 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateGraphicsPipeline()
+	void SandboxApplication::CreateGraphicsPipeline()
 	{
+		// Rubric 3: The program reads data from a file
 		std::string vertexShaderPath(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "vert.spv");
 		std::ifstream vertexShaderIs(vertexShaderPath, std::ios::binary);
 
@@ -641,6 +641,7 @@ namespace BadgerSandbox
 
 		vertexShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
 
+		// Rubric 3: The program reads data from a file
 		std::string fragmentShaderPath(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "frag.spv");
 		std::ifstream fragmentShaderIs(fragmentShaderPath, std::ios::binary);
 
@@ -861,7 +862,7 @@ namespace BadgerSandbox
 		graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
 	}
 
-	void CreateGraphicsCommandsBuffers()
+	void SandboxApplication::CreateGraphicsCommandsBuffers()
 	{
 		VkCommandPoolCreateInfo commandPoolCreateInfo =
 		{
@@ -908,7 +909,7 @@ namespace BadgerSandbox
 		framebuffers.resize(renderResourcesCount);
 	}
 
-	void AllocateBufferMemory(VkBuffer& buffer, const VkMemoryPropertyFlags& memoryProperty, VkDeviceMemory& memory)
+	void SandboxApplication::AllocateBufferMemory(VkBuffer& buffer, const VkMemoryPropertyFlags& memoryProperty, VkDeviceMemory& memory)
 	{
 		VkMemoryRequirements bufferMemoryRequirements;
 		vkGetBufferMemoryRequirements(device.Get(), buffer, &bufferMemoryRequirements);
@@ -938,7 +939,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateBuffer(const VkDeviceSize& size, VkBufferUsageFlags usage, VkBuffer& bufferToCreate, VkDeviceMemory& memory, const VkMemoryPropertyFlags& memoryProperty)
+	void SandboxApplication::CreateBuffer(const VkDeviceSize& size, VkBufferUsageFlags usage, VkBuffer& bufferToCreate, VkDeviceMemory& memory, const VkMemoryPropertyFlags& memoryProperty)
 	{
 		VkBufferCreateInfo bufferCreateInfo = {
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,             // VkStructureType                sType
@@ -964,117 +965,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateVertexBuffer()
-	{
-		VertexData vertexData[] =
-		{
-		  {
-			-0.7f, -0.7f, 0.0f, 1.0f,
-			-0.1f, -0.1f
-		  },
-		  {
-			-0.7f, 0.7f, 0.0f, 1.0f,
-			-0.1f, 1.1f
-		  },
-		  {
-			0.7f, -0.7f, 0.0f, 1.0f,
-			1.1f, -0.1f
-		  },
-		  {
-			0.7f, 0.7f, 0.0f, 1.0f,
-			1.1f, 1.1f
-		  }
-		};
-
-		VkDeviceSize vertexBufferSize = sizeof(vertexData);
-		CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, vertexBuffer, vertexBufferMemory, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		VkBuffer stagingBuffer;
-		VkDeviceSize stagingBufferSize = 4000;
-		VkDeviceMemory stagingBufferMemory;
-		CreateBuffer(stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingBuffer, stagingBufferMemory, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-		void* stagingBufferMemoryPointer;
-		if (vkMapMemory(device.Get(), stagingBufferMemory, 0, vertexBufferSize, 0, &stagingBufferMemoryPointer) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Could not map staging buffer memory");
-		}
-
-		memcpy(stagingBufferMemoryPointer, vertexData, vertexBufferSize);
-
-		VkMappedMemoryRange flushRange =
-		{
-		  VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,            // VkStructureType                        sType
-		  nullptr,                                          // const void                            *pNext
-		  stagingBufferMemory,                              // VkDeviceMemory                         memory
-		  0,                                                // VkDeviceSize                           offset
-		  vertexBufferSize                                  // VkDeviceSize                           size
-		};
-		vkFlushMappedMemoryRanges(device.Get(), 1, &flushRange);
-
-		vkUnmapMemory(device.Get(), stagingBufferMemory);
-
-		// Prepare command buffer to copy data from staging buffer to a vertex buffer
-		VkCommandBufferBeginInfo commandBufferBeginInfo =
-		{
-		  VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,      // VkStructureType                        sType
-		  nullptr,                                          // const void                            *pNext
-		  VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,      // VkCommandBufferUsageFlags              flags
-		  nullptr                                           // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
-		};
-
-		std::vector<VkCommandBuffer> commandBuffers = graphicsCommandBuffers.Get();
-		VkCommandBuffer commandBuffer = commandBuffers[0];
-
-		vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-
-		VkBufferCopy bufferCopyInfo =
-		{
-		  0,                                                // VkDeviceSize                           srcOffset
-		  0,                                                // VkDeviceSize                           dstOffset
-		  vertexBufferSize                                  // VkDeviceSize                           size
-		};
-		vkCmdCopyBuffer(commandBuffer, stagingBuffer, vertexBuffer, 1, &bufferCopyInfo);
-
-		VkBufferMemoryBarrier bufferMemoryBarrier =
-		{
-		  VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,          // VkStructureType                        sType;
-		  nullptr,                                          // const void                            *pNext
-		  VK_ACCESS_MEMORY_WRITE_BIT,                       // VkAccessFlags                          srcAccessMask
-		  VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,              // VkAccessFlags                          dstAccessMask
-		  VK_QUEUE_FAMILY_IGNORED,                          // uint32_t                               srcQueueFamilyIndex
-		  VK_QUEUE_FAMILY_IGNORED,                          // uint32_t                               dstQueueFamilyIndex
-		  vertexBuffer,                                     // VkBuffer                               buffer
-		  0,                                                // VkDeviceSize                           offset
-		  VK_WHOLE_SIZE                                     // VkDeviceSize                           size
-		};
-		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &bufferMemoryBarrier, 0, nullptr);
-
-		vkEndCommandBuffer(commandBuffer);
-
-		// Submit command buffer and copy data from staging buffer to a vertex buffer
-		VkSubmitInfo submitInfo =
-		{
-		  VK_STRUCTURE_TYPE_SUBMIT_INFO,                    // VkStructureType                        sType
-		  nullptr,                                          // const void                            *pNext
-		  0,                                                // uint32_t                               waitSemaphoreCount
-		  nullptr,                                          // const VkSemaphore                     *pWaitSemaphores
-		  nullptr,                                          // const VkPipelineStageFlags            *pWaitDstStageMask;
-		  1,                                                // uint32_t                               commandBufferCount
-		  &commandBuffer,                                  // const VkCommandBuffer                 *pCommandBuffers
-		  0,                                                // uint32_t                               signalSemaphoreCount
-		  nullptr                                           // const VkSemaphore                     *pSignalSemaphores
-		};
-
-		if (vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Copy from staging to vertex buffer command failed");
-		}
-
-		vkDeviceWaitIdle(device.Get());
-
-	}
-
-	void CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
+	void SandboxApplication::CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
 	{
 		std::array<VkImageView, 2> attachments = 
 		{
@@ -1097,7 +988,7 @@ namespace BadgerSandbox
 		framebuffer.Reset(device.Get(), framebufferCreateInfo);
 	}
 
-	void RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
+	void SandboxApplication::RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
 	{
 		VkCommandBufferBeginInfo commandBufferBeginInfo =
 		{
@@ -1180,7 +1071,8 @@ namespace BadgerSandbox
 		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &scissor);
 
 		VkDeviceSize offset = 0;
-		vkglTF::Model& model = g_models.scene;
+		//vkglTF::Model& model = g_models.scene;
+		vkglTF::Model& model = g_models[currentSelectedModel].scene;
 		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &model.vertices.buffer, &offset);
 		if (model.indices.buffer != VK_NULL_HANDLE)
 		{
@@ -1190,7 +1082,7 @@ namespace BadgerSandbox
 		// Opaque primitives first
 		for (auto node : model.nodes)
 		{
-			renderNode(node, resourceIndex, vkglTF::Material::ALPHAMODE_OPAQUE, commandBuffers[resourceIndex]);
+			RenderNode(*node, resourceIndex, vkglTF::Material::ALPHAMODE_OPAQUE, commandBuffers[resourceIndex], pipelineLayout);
 		}
 
 		vkCmdEndRenderPass(commandBuffers[resourceIndex]);
@@ -1201,73 +1093,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateImage(uint32_t width, uint32_t height, VkImage& image)
-	{
-		VkImageCreateInfo imageCreateInfo =
-		{
-		  VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,  // VkStructureType        sType;
-		  nullptr,                              // const void            *pNext
-		  0,                                    // VkImageCreateFlags     flags
-		  VK_IMAGE_TYPE_2D,                     // VkImageType            imageType
-		  VK_FORMAT_B8G8R8A8_UNORM,             // VkFormat               format
-		  {                                     // VkExtent3D             extent
-			width,                                // uint32_t               width
-			height,                               // uint32_t               height
-			1                                     // uint32_t               depth
-		  },
-		  1,                                    // uint32_t               mipLevels
-		  1,                                    // uint32_t               arrayLayers
-		  VK_SAMPLE_COUNT_1_BIT,                // VkSampleCountFlagBits  samples
-		  VK_IMAGE_TILING_OPTIMAL,              // VkImageTiling          tiling
-		  VK_IMAGE_USAGE_TRANSFER_DST_BIT |     // VkImageUsageFlags      usage
-		  VK_IMAGE_USAGE_SAMPLED_BIT,
-		  VK_SHARING_MODE_EXCLUSIVE,            // VkSharingMode          sharingMode
-		  0,                                    // uint32_t               queueFamilyIndexCount
-		  nullptr,                              // const uint32_t        *pQueueFamilyIndices
-		  VK_IMAGE_LAYOUT_UNDEFINED             // VkImageLayout          initialLayout
-		};
-
-		if (vkCreateImage(device.Get(), &imageCreateInfo, nullptr, &image) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Couldn't create Image");
-		}
-	}
-
-	void AllocateImageMemory(const VkImage& image, VkDeviceMemory& memory, const VkMemoryPropertyFlags& memoryProperty)
-	{
-		VkMemoryRequirements imageMemoryRequirements;
-		vkGetImageMemoryRequirements(device.Get(), image, &imageMemoryRequirements);
-
-		VkPhysicalDeviceMemoryProperties memoryProperties;
-		vkGetPhysicalDeviceMemoryProperties(selectedPhysicalDevice, &memoryProperties);
-
-		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
-		{
-			if ((imageMemoryRequirements.memoryTypeBits & (1 << i)) &&
-				(memoryProperties.memoryTypes[i].propertyFlags & memoryProperty))
-			{
-
-				VkMemoryAllocateInfo memory_allocate_info =
-				{
-				  VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, // VkStructureType  sType
-				  nullptr,                                // const void      *pNext
-				  imageMemoryRequirements.size,           // VkDeviceSize     allocationSize
-				  i                                       // uint32_t         memoryTypeIndex
-				};
-
-				if (vkAllocateMemory(device.Get(), &memory_allocate_info, nullptr, &memory) != VK_SUCCESS)
-				{
-					throw std::runtime_error("Couldn't Allocate Memory for the image");
-				}
-				else
-				{
-					break;
-				}
-			}
-		}
-	}
-
-	void CreateImageView(const VkImage& image, VkImageView& imageView)
+	void SandboxApplication::CreateImageView(const VkImage& image, VkImageView& imageView)
 	{
 		VkImageViewCreateInfo imageViewCreateInfo =
 		{
@@ -1298,176 +1124,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void CreateSampler(VkSampler& sampler)
-	{
-		VkSamplerCreateInfo samplerCreateInfo =
-		{
-		  VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,                // VkStructureType            sType
-		  nullptr,                                              // const void*                pNext
-		  0,                                                    // VkSamplerCreateFlags       flags
-		  VK_FILTER_LINEAR,                                     // VkFilter                   magFilter
-		  VK_FILTER_LINEAR,                                     // VkFilter                   minFilter
-		  VK_SAMPLER_MIPMAP_MODE_NEAREST,                       // VkSamplerMipmapMode        mipmapMode
-		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,                // VkSamplerAddressMode       addressModeU
-		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,                // VkSamplerAddressMode       addressModeV
-		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,                // VkSamplerAddressMode       addressModeW
-		  0.0f,                                                 // float                      mipLodBias
-		  VK_FALSE,                                             // VkBool32                   anisotropyEnable
-		  1.0f,                                                 // float                      maxAnisotropy
-		  VK_FALSE,                                             // VkBool32                   compareEnable
-		  VK_COMPARE_OP_ALWAYS,                                 // VkCompareOp                compareOp
-		  0.0f,                                                 // float                      minLod
-		  0.0f,                                                 // float                      maxLod
-		  VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,              // VkBorderColor              borderColor
-		  VK_FALSE                                              // VkBool32                   unnormalizedCoordinates
-		};
-
-		if (vkCreateSampler(device.Get(), &samplerCreateInfo, nullptr, &sampler) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Couldn't create sampler");
-		}
-	}
-
-	void CreateTexture()
-	{
-		CreateImage(720, 720, textureImage);
-		AllocateImageMemory(textureImage, textureMemory, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		if (vkBindImageMemory(device.Get(), textureImage, textureMemory, 0) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Couldn't bind memory to texture");
-		}
-
-		CreateImageView(textureImage, textureImageView);
-		CreateSampler(textureSampler);
-
-		VkBuffer stagingBuffer;
-		VkDeviceSize stagingBufferSize = 720 * 720 * 4;
-		VkDeviceMemory stagingBufferMemory;
-
-		CreateBuffer(stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingBuffer, stagingBufferMemory, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-		void* stagingBufferMemoryPointer;
-
-		if (vkMapMemory(device.Get(), stagingBufferMemory, 0, stagingBufferSize, 0, &stagingBufferMemoryPointer) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Couldn't map memory to the Image staging buffer");
-		}
-
-		//memcpy(stagingBufferMemoryPointer, ImageData, stagingBufferSize);
-
-		VkMappedMemoryRange flushRange =
-		{
-		  VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,              // VkStructureType                        sType
-		  nullptr,                                            // const void                            *pNext
-		  stagingBufferMemory,                                // VkDeviceMemory                         memory
-		  0,                                                  // VkDeviceSize                           offset
-		  stagingBufferSize                                   // VkDeviceSize                           size
-		};
-		vkFlushMappedMemoryRanges(device.Get(), 1, &flushRange);
-		vkUnmapMemory(device.Get(), stagingBufferMemory);
-
-		// Prepare command buffer to copy data from staging buffer to a vertex buffer
-		VkCommandBufferBeginInfo commandBufferBeginInfo =
-		{
-		  VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,        // VkStructureType                        sType
-		  nullptr,                                            // const void                            *pNext
-		  VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,        // VkCommandBufferUsageFlags              flags
-		  nullptr                                             // const VkCommandBufferInheritanceInfo  *pInheritanceInfo
-		};
-
-		std::vector<VkCommandBuffer> commandBuffers = graphicsCommandBuffers.Get();
-		VkCommandBuffer commandBuffer = commandBuffers[0];
-
-		vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-
-		VkImageSubresourceRange imageSubResourceRange =
-		{
-		  VK_IMAGE_ASPECT_COLOR_BIT,                          // VkImageAspectFlags                     aspectMask
-		  0,                                                  // uint32_t                               baseMipLevel
-		  1,                                                  // uint32_t                               levelCount
-		  0,                                                  // uint32_t                               baseArrayLayer
-		  1                                                   // uint32_t                               layerCount
-		};
-
-		VkImageMemoryBarrier imageMemoryBarrierFromUndefinedToTransferDst =
-		{
-		  VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,             // VkStructureType                        sType
-		  nullptr,                                            // const void                            *pNext
-		  0,                                                  // VkAccessFlags                          srcAccessMask
-		  VK_ACCESS_TRANSFER_WRITE_BIT,                       // VkAccessFlags                          dstAccessMask
-		  VK_IMAGE_LAYOUT_UNDEFINED,                          // VkImageLayout                          oldLayout
-		  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,               // VkImageLayout                          newLayout
-		  VK_QUEUE_FAMILY_IGNORED,                            // uint32_t                               srcQueueFamilyIndex
-		  VK_QUEUE_FAMILY_IGNORED,                            // uint32_t                               dstQueueFamilyIndex
-		  textureImage,                                // VkImage                                image
-		  imageSubResourceRange                             // VkImageSubresourceRange                subresourceRange
-		};
-		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrierFromUndefinedToTransferDst);
-
-		VkBufferImageCopy bufferImageCopyInfo =
-		{
-		  0,                                                  // VkDeviceSize                           bufferOffset
-		  0,                                                  // uint32_t                               bufferRowLength
-		  0,                                                  // uint32_t                               bufferImageHeight
-		  {                                                   // VkImageSubresourceLayers               imageSubresource
-			VK_IMAGE_ASPECT_COLOR_BIT,                          // VkImageAspectFlags                     aspectMask
-			0,                                                  // uint32_t                               mipLevel
-			0,                                                  // uint32_t                               baseArrayLayer
-			1                                                   // uint32_t                               layerCount
-		  },
-		  {                                                   // VkOffset3D                             imageOffset
-			0,                                                  // int32_t                                x
-			0,                                                  // int32_t                                y
-			0                                                   // int32_t                                z
-		  },
-		  {                                                   // VkExtent3D                             imageExtent
-			720,                                                // uint32_t                               width
-			720,                                                // uint32_t                               height
-			1                                                   // uint32_t                               depth
-		  }
-		};
-		vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopyInfo);
-
-		VkImageMemoryBarrier imageMemoryBarrierFromTransferToShaderRead =
-		{
-		  VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,             // VkStructureType                        sType
-		  nullptr,                                            // const void                            *pNext
-		  VK_ACCESS_TRANSFER_WRITE_BIT,                       // VkAccessFlags                          srcAccessMask
-		  VK_ACCESS_SHADER_READ_BIT,                          // VkAccessFlags                          dstAccessMask
-		  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,               // VkImageLayout                          oldLayout
-		  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,           // VkImageLayout                          newLayout
-		  VK_QUEUE_FAMILY_IGNORED,                            // uint32_t                               srcQueueFamilyIndex
-		  VK_QUEUE_FAMILY_IGNORED,                            // uint32_t                               dstQueueFamilyIndex
-		  textureImage,                                       // VkImage                                image
-		  imageSubResourceRange                               // VkImageSubresourceRange                subresourceRange
-		};
-		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrierFromTransferToShaderRead);
-
-		vkEndCommandBuffer(commandBuffer);
-
-		// Submit command buffer and copy data from staging buffer to a vertex buffer
-		VkSubmitInfo submitInfo =
-		{
-		  VK_STRUCTURE_TYPE_SUBMIT_INFO,                      // VkStructureType                        sType
-		  nullptr,                                            // const void                            *pNext
-		  0,                                                  // uint32_t                               waitSemaphoreCount
-		  nullptr,                                            // const VkSemaphore                     *pWaitSemaphores
-		  nullptr,                                            // const VkPipelineStageFlags            *pWaitDstStageMask;
-		  1,                                                  // uint32_t                               commandBufferCount
-		  &commandBuffer,                                     // const VkCommandBuffer                 *pCommandBuffers
-		  0,                                                  // uint32_t                               signalSemaphoreCount
-		  nullptr                                             // const VkSemaphore                     *pSignalSemaphores
-		};
-
-		if (vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Command Buffer to copy from staging buffer to Image buffer memory failed");
-		}
-
-		vkDeviceWaitIdle(device.Get());
-	}
-
-	void CreateDescriptorSetLayoutScene()
+	void SandboxApplication::CreateDescriptorSetLayoutScene()
 	{
 		std::array<VkDescriptorSetLayoutBinding, 2> layoutBindings =
 		{ {
@@ -1499,7 +1156,7 @@ namespace BadgerSandbox
 		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &g_descriptorSetLayouts.scene));
 	}
 
-	void CreateDescriptorSetLayoutNode()
+	void SandboxApplication::CreateDescriptorSetLayoutNode()
 	{
 		VkDescriptorSetLayoutBinding setLayoutBinding = 
         {
@@ -1522,10 +1179,11 @@ namespace BadgerSandbox
 		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &g_descriptorSetLayouts.node));
 	}
 
-	void CreateDescriptorPool()
+	void SandboxApplication::CreateDescriptorPool()
 	{
 		uint32_t meshCount = 0;
-		std::vector<vkglTF::Model*> modellist = { &g_models.scene };
+		//std::vector<vkglTF::Model*> modellist = { &g_models.scene };
+		std::vector<vkglTF::Model*> modellist = { &g_models[currentSelectedModel].scene };
 		for (auto& model : modellist)
 		{
 			for (auto node : model->linearNodes)
@@ -1537,7 +1195,7 @@ namespace BadgerSandbox
 			}
 		}
 
-		std::vector<VkDescriptorPoolSize> poolSizes = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (4 + meshCount) * renderResourcesCount} };
+		std::vector<VkDescriptorPoolSize> poolSizes = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (4 + meshCount) * (uint32_t)renderResourcesCount} };
 		VkDescriptorPoolCreateInfo descriptorPoolCI{};
 		descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		descriptorPoolCI.poolSizeCount = poolSizes.size();
@@ -1547,7 +1205,7 @@ namespace BadgerSandbox
 		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCI, nullptr, &dPool));
 	}
 
-	void AllocateDescriptorSetScene()
+	void SandboxApplication::AllocateDescriptorSetScene()
 	{
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
 		{
@@ -1563,15 +1221,16 @@ namespace BadgerSandbox
 		}
 	}
 
-	void AllocateDescriptorSetNode()
+	void SandboxApplication::AllocateDescriptorSetNode()
 	{
-		for (auto& node : g_models.scene.nodes)
+		//for (auto& node : g_models.scene.nodes)
+		for (auto& node : g_models[currentSelectedModel].scene.nodes)
 		{
 			SetupNodeDescriptorSet(node, dPool, g_descriptorSetLayouts, device.Get());
 		}
 	}
 
-	void UpdateDescriptorSetScene()
+	void SandboxApplication::UpdateDescriptorSetScene()
 	{
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
@@ -1595,16 +1254,11 @@ namespace BadgerSandbox
 		}
 	}
 
-	void UpdateDescriptorSetNode()
-	{
-	
-	}
-
 	/*
       Took this function from VulkanTutorial:
       https://vulkan-tutorial.com/
     */
-	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	uint32_t SandboxApplication::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 	{
 		VkPhysicalDeviceMemoryProperties memProperties;
 		vkGetPhysicalDeviceMemoryProperties(selectedPhysicalDevice, &memProperties);
@@ -1624,7 +1278,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+	void SandboxApplication::CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 	{
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1664,7 +1318,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkImageView CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) 
+	VkImageView SandboxApplication::CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 	{
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1689,7 +1343,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) 
+	VkFormat SandboxApplication::FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 	{
 		for (VkFormat format : candidates) 
 		{
@@ -1712,7 +1366,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat FindDepthFormat() 
+	VkFormat SandboxApplication::FindDepthFormat()
 	{
 		return FindSupportedFormat(
 			{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -1725,18 +1379,43 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void CreateDepthImage()
+	void SandboxApplication::CreateDepthImage()
 	{
 		VkFormat depthFormat = FindDepthFormat();
 		CreateImageVulkanTutorial(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
 		depthImageView = CreateImageViewVulkanTutorial(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
-	void PopulateSaschaWillemsStructures()
+	void SandboxApplication::LoadModel1()
+	{
+		// Rubric 3: The program reads data from a file
+		g_models[0].scene.destroy(device.Get());
+		g_models[0].scene.loadFromFile(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "JillHipHop.gltf", &saschaDevice, queue);
+		std::cout << "Loaded Model 1" << std::endl;
+	}
+
+	void SandboxApplication::LoadModel2()
+	{
+		// Rubric 3: The program reads data from a file
+		g_models[1].scene.destroy(device.Get());
+		g_models[1].scene.loadFromFile(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "JillDance.gltf", &saschaDevice, queue);
+		std::cout << "Loaded Model 2" << std::endl;
+	}
+
+	void SandboxApplication::LoadModel3()
+	{
+		// Rubric 3: The program reads data from a file
+		g_models[2].scene.destroy(device.Get());
+		g_models[2].scene.loadFromFile(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "JillDance2.gltf", &saschaDevice, queue);
+		std::cout << "Loaded Model 3" << std::endl;
+	}
+
+	void SandboxApplication::PopulateSaschaWillemsStructures()
 	{
 		saschaDevice.Reset(selectedPhysicalDevice, device.Get(), graphicsCommandPool.Get());
 		g_uniformBuffers.resize(renderResourcesCount);
 		g_descriptorSets.resize(renderResourcesCount);
+		g_models.resize(3);
 		saschaCamera.type = Camera::CameraType::lookat;
 		saschaCamera.setPerspective(45.0f, 1920.0 / 1080.0, 0.1f, 256.0f);
 		saschaCamera.rotationSpeed = 0.25f;
@@ -1760,20 +1439,29 @@ namespace BadgerSandbox
 				-saschaCamera.position.z * sin(glm::radians(saschaCamera.rotation.x)),
 				saschaCamera.position.z * cos(glm::radians(saschaCamera.rotation.y)) * cos(glm::radians(saschaCamera.rotation.x)));
 
-		g_models.scene.destroy(device.Get());
-		g_models.scene.loadFromFile(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "JillHipHop.gltf", &saschaDevice, queue);
+		// Rubric 6: Concurrency, each model is loaded in a new thread
+		std::vector<std::thread> threads;
+		threads.emplace_back(std::thread(&SandboxApplication::LoadModel1, this));
+		threads.emplace_back(std::thread(&SandboxApplication::LoadModel2, this));
+		threads.emplace_back(std::thread(&SandboxApplication::LoadModel3, this));
+		
+		// Wait until all models have been loaded
+		for (auto& t : threads)
+			t.join();
+		
+		
 	}
 
-	void Draw()
+	void SandboxApplication::Draw()
 	{
-		if ((animate) && (g_models.scene.animations.size() > 0))
+		if ((animate) && (g_models[currentSelectedModel].scene.animations.size() > 0))
 		{
 			animationTimer += 0.0016;
-			if (animationTimer > g_models.scene.animations[animationIndex].end)
+			if (animationTimer > g_models[currentSelectedModel].scene.animations[animationIndex].end)
 			{
-				animationTimer -= g_models.scene.animations[animationIndex].end;
+				animationTimer -= g_models[currentSelectedModel].scene.animations[animationIndex].end;
 			}
-			g_models.scene.updateAnimation(animationIndex, animationTimer);
+			g_models[currentSelectedModel].scene.updateAnimation(animationIndex, animationTimer);
 		}
 		
 		static size_t resourceIndex = 0;
@@ -1827,8 +1515,25 @@ namespace BadgerSandbox
 		resourceIndex = (resourceIndex + 1) % renderResourcesCount;
 	}
 
-	void InitVulkan()
+	std::unique_ptr<GLFWwindow, DestroyGLFWwindow> SandboxApplication::CreateVulkanWindow()
 	{
+		GLFWwindow* rawWindow = WindowInit();
+		std::unique_ptr<GLFWwindow, DestroyGLFWwindow> windowPtr(rawWindow);
+		presentationExtensions = WindowGetPresentationExtensions();
+		for (const auto& extension : presentationExtensions)
+		{
+			requestedExtensions[extension] = false;
+		}
+		return windowPtr;
+	}
+
+	SandboxApplication::SandboxApplication()
+		: renderResourcesCount(3)
+		, suitablePhysicalDeviceIndex(0xFFFFFFFF)
+		, suitableQueueFamilyIndex(0xFFFFFFFF)
+		, currentSelectedModel(1)
+	{
+		window = CreateVulkanWindow();
 		try
 		{
 			CreateInstance();
@@ -1842,44 +1547,33 @@ namespace BadgerSandbox
 			CreateDepthImage();
 			CreateGraphicsCommandsBuffers();
 			PopulateSaschaWillemsStructures();
-			//CreateVertexBuffer();
-			//CreateTexture();
 			CreateDescriptorSetLayoutScene();
 			CreateDescriptorSetLayoutNode();
 			CreateDescriptorPool();
 			AllocateDescriptorSetScene();
 			AllocateDescriptorSetNode();
 			UpdateDescriptorSetScene();
-			UpdateDescriptorSetNode();
 			CreateGraphicsPipeline();
 		}
-        catch(std::exception& e) 
-        {
-          std::cout << e.what() << std::endl;
-        }
-	}
-
-	void CreateVulkanWindow()
-	{
-		window = WindowInit();
-		presentationExtensions = WindowGetPresentationExtensions();
-		for (const auto& extension : presentationExtensions)
+		catch (std::exception& e)
 		{
-			requestedExtensions[extension] = false;
+			std::cout << e.what() << std::endl;
 		}
-
+	}
+	
+	SandboxApplication::~SandboxApplication()
+	{
 	}
 }
 
 int main()
 {
 	std::cout << "Hello World!" << std::endl;
-	BadgerSandbox::CreateVulkanWindow();
-	BadgerSandbox::InitVulkan();
+	BadgerSandbox::SandboxApplication application;
 
-	while (!BadgerSandbox::WindowShouldClose(BadgerSandbox::window))
+	while (!BadgerSandbox::WindowShouldClose(application.GetRawWindow()))
 	{
 		glfwPollEvents();
-		BadgerSandbox::Draw();
+		application.Draw();
 	}
 }
