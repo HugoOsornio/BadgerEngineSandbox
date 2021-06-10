@@ -69,7 +69,10 @@ For Linux you will need to install the Vulkan SDK:
 https://vulkan.lunarg.com/sdk/home#linux
 I tested with 1.2.176 on Ubuntu
 
-Once you have both requirements installed:
+Before trying to compile, you will need to source the setup-env.sh included with the SDK:
+source <vulkan installation path>/setup-env.sh
+
+Then you can fetch the code and build using the following commands:
 
 git clone --recursive https://github.com/HugoOsornio/BadgerEngineSandbox.git
 
