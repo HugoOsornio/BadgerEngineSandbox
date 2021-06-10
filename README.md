@@ -50,9 +50,12 @@ I tested with 1.2.176
 
 Once you have both requirements installed:
 
-git clone --recursive https://github.com/HugoOsornio
+git clone --recursive https://github.com/HugoOsornio/BadgerEngineSandbox.git
+
 mkdir build
+
 cd build
+
 cmake ..
 
 This will download the Third Party libraries and create the Visual Studio project: BadgerEngineSandbox.sln
@@ -68,10 +71,14 @@ I tested with 1.2.176 on Ubuntu
 
 Once you have both requirements installed:
 
-git clone --recursive https://github.com/HugoOsornio
+git clone --recursive https://github.com/HugoOsornio/BadgerEngineSandbox.git
+
 mkdir build
+
 cd build
+
 cmake ..
+
 make
 
 This will build the binaries for you to execute.
