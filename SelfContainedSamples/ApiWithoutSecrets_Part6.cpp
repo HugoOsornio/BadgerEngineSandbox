@@ -1,4 +1,5 @@
 #include <array>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -314,16 +315,16 @@ void CreateSwapchain()
 	// with nonlinear color space
 	for (VkSurfaceFormatKHR& sf : surfaceFormats)
 	{
-		if (sf.format == VK_FORMAT_R8G8B8A8_UNORM)
+		if (sf.format == VK_FORMAT_B8G8R8A8_UNORM)
 		{
 			selectedSurfaceFormat = sf;
 			break;
 		}
 	}
-	if (selectedSurfaceFormat.format != VK_FORMAT_R8G8B8A8_UNORM)
+	if (selectedSurfaceFormat.format != VK_FORMAT_B8G8R8A8_UNORM)
 	{
-		std::cout << "Found an undefined format, forcing RGBA8888 UNORM";
-		selectedSurfaceFormat.format = VK_FORMAT_R8G8B8A8_UNORM;
+		std::cout << "Found an undefined format, forcing VK_FORMAT_B8G8R8A8_UNORM";
+		selectedSurfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
 		selectedSurfaceFormat.colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
 	}
 
@@ -386,10 +387,11 @@ void CreateSwapchain()
 			presentMode = pm;
 		}
 	}
-	if (presentMode != VK_PRESENT_MODE_MAILBOX_KHR)
-	{
-		throw std::runtime_error("This sample requires a VK_PRESENT_MODE_MAILBOX_KHR capable swapchain");
-	}
+    if (presentMode != VK_PRESENT_MODE_MAILBOX_KHR)
+    {
+        std::cout << "MAILBOX present mode is not available, forcing FIFO as present mode" << std::endl;
+        presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    }
 
 	VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE;
 
@@ -940,7 +942,7 @@ void CreateVertexBuffer()
 		throw std::runtime_error("Could not map staging buffer memory");
 	}
 
-	memcpy(stagingBufferMemoryPointer, vertexData, vertexBufferSize);
+	std::memcpy(stagingBufferMemoryPointer, vertexData, vertexBufferSize);
 
 	VkMappedMemoryRange flushRange = 
 	{
@@ -1133,7 +1135,7 @@ void CreateImage(uint32_t width, uint32_t height, VkImage& image)
 	  nullptr,                              // const void            *pNext
 	  0,                                    // VkImageCreateFlags     flags
 	  VK_IMAGE_TYPE_2D,                     // VkImageType            imageType
-	  VK_FORMAT_R8G8B8A8_UNORM,             // VkFormat               format
+	  VK_FORMAT_B8G8R8A8_UNORM,             // VkFormat               format
 	  {                                     // VkExtent3D             extent
 	    width,                                // uint32_t               width
 	    height,                               // uint32_t               height
@@ -1200,7 +1202,7 @@ void CreateImageView(const VkImage& image, VkImageView& imageView)
 	  0,                                        // VkImageViewCreateFlags   flags
 	  image,                                    // VkImage                  image
 	  VK_IMAGE_VIEW_TYPE_2D,                    // VkImageViewType          viewType
-	  VK_FORMAT_R8G8B8A8_UNORM,                 // VkFormat                 format
+	  VK_FORMAT_B8G8R8A8_UNORM,                 // VkFormat                 format
 	  {                                         // VkComponentMapping       components
 	    VK_COMPONENT_SWIZZLE_IDENTITY,            // VkComponentSwizzle       r
 	    VK_COMPONENT_SWIZZLE_IDENTITY,            // VkComponentSwizzle       g
@@ -1277,7 +1279,7 @@ void CreateTexture()
 		throw std::runtime_error("Couldn't map memory to the Image staging buffer");
 	}
 
-	memcpy(stagingBufferMemoryPointer, ImageData, stagingBufferSize);
+	std::memcpy(stagingBufferMemoryPointer, ImageData, stagingBufferSize);
 
 	VkMappedMemoryRange flushRange = 
 	{
@@ -1555,10 +1557,10 @@ void initVulkan()
 		UpdateDescriptorSet();
 		CreateGraphicsPipeline();
 	}
-	catch (...)
-	{
-
-	}
+    catch(std::exception& e) 
+    {
+      std::cout << e.what() << std::endl;
+    }
 }
 
 void initWindow()

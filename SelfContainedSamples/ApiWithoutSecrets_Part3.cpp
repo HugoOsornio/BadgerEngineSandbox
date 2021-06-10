@@ -262,16 +262,16 @@ void CreateSwapchain()
     // with nonlinear color space
     for (VkSurfaceFormatKHR& sf : surfaceFormats) 
     {
-      if (sf.format == VK_FORMAT_R8G8B8A8_UNORM) 
+      if (sf.format == VK_FORMAT_B8G8R8A8_UNORM) 
       {
         selectedSurfaceFormat = sf;
         break;
       }
     }
-    if (selectedSurfaceFormat.format != VK_FORMAT_R8G8B8A8_UNORM)
+    if (selectedSurfaceFormat.format != VK_FORMAT_B8G8R8A8_UNORM)
     {
-        std::cout << "Found an undefined format, forcing RGBA8888 UNORM";
-        selectedSurfaceFormat.format = VK_FORMAT_R8G8B8A8_UNORM;
+        std::cout << "Found an undefined format, forcing VK_FORMAT_B8G8R8A8_UNORM";
+        selectedSurfaceFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
         selectedSurfaceFormat.colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
     }
 
@@ -336,7 +336,8 @@ void CreateSwapchain()
     }
     if (presentMode != VK_PRESENT_MODE_MAILBOX_KHR)
     {
-        throw std::runtime_error("This sample requires a VK_PRESENT_MODE_MAILBOX_KHR capable swapchain");
+        std::cout << "MAILBOX present mode is not available, forcing FIFO as present mode" << std::endl;
+        presentMode = VK_PRESENT_MODE_FIFO_KHR;
     }
 
     VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE;
@@ -876,9 +877,9 @@ void initVulkan()
       CreateGraphicsPipeline();
       CreateGraphicsCommandsBuffers();
     }
-    catch (...)
+    catch(std::exception& e) 
     {
-    
+      std::cout << e.what() << std::endl;
     }
 }
 
