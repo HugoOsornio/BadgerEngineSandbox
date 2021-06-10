@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "Window.hpp"
+
+// Rapid Vulkan wraps Vulkan Objects and eases RAII implementation
 #include <RapidVulkan/Instance.hpp>
 #include <RapidVulkan/Device.hpp>
 #include <RapidVulkan/SwapchainKHR.hpp>
@@ -16,6 +18,10 @@
 #include <RapidVulkan/GraphicsPipeline.hpp>
 #include <RapidVulkan/CommandPool.hpp>
 #include <RapidVulkan/CommandBuffers.hpp>
+
+// Sascha Willems's helper files to load glTF models
+#include "VulkanDevice.hpp"
+#include "camera.hpp"
 
 
 namespace BadgerSandbox
@@ -70,8 +76,16 @@ namespace BadgerSandbox
   VkDeviceMemory textureMemory;
   VkSampler textureSampler;
 
+  VkImage depthImage;
+  VkDeviceMemory depthImageMemory;
+  VkImageView depthImageView;
+
   VkDescriptorSetLayout dsLayout;
   VkDescriptorPool dPool;
   VkDescriptorSet ds;
   VkPipelineLayout pipelineLayout;
+
+  // Sascha's objects needed to load a glTF model:
+  vks::VulkanDevice saschaDevice;
+  Camera saschaCamera;
 }

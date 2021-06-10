@@ -8,7 +8,7 @@
 
 namespace BadgerSandbox
 {
-	void WindowInit(GLFWwindow* window);
+	GLFWwindow* WindowInit();
 	std::vector<std::string> WindowGetPresentationExtensions();
 	bool WindowShouldClose(GLFWwindow* window);
 }

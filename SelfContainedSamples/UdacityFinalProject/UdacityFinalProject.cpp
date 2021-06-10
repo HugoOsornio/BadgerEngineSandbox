@@ -7,9 +7,137 @@
 #include "../RenderBadger.h"
 
 #include "UdacityFinalProject.hpp"
+#include "VulkanUtils.hpp"
+#include "VulkanglTFModel.hpp"
 
 namespace BadgerSandbox
 {
+	struct Models
+	{
+		vkglTF::Model scene;
+	};
+
+	struct UniformBufferSet
+	{
+		vkbuffer::Buffer scene;
+		vkbuffer::Buffer params;
+	};
+
+	struct UBOMatrices
+	{
+		glm::mat4 projection;
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::vec3 camPos;
+	};
+
+	struct shaderValuesParams
+	{
+		glm::vec4 lightDir;
+	};
+
+	struct Pipelines
+	{
+		VkPipeline geometry;
+	};
+
+	struct DescriptorSetLayouts
+	{
+		VkDescriptorSetLayout scene;
+		VkDescriptorSetLayout node;
+	};
+
+	struct DescriptorSet
+	{
+		VkDescriptorSet scene;
+	};
+
+	struct LightSource
+	{
+		glm::vec3 color = glm::vec3(1.0f);
+		glm::vec3 rotation = glm::vec3(75.0f, 40.0f, 0.0f);
+	};
+
+	/////////////////////////////
+	Models g_models;
+	UBOMatrices g_shaderValuesScene;
+	shaderValuesParams g_shaderParams;
+	VkPipelineLayout g_pipelineLayout;
+	Pipelines g_pipelines;
+	DescriptorSetLayouts g_descriptorSetLayouts;
+	std::vector<DescriptorSet> g_descriptorSets;
+	std::vector<UniformBufferSet> g_uniformBuffers;
+	LightSource g_lightSource;
+
+	int32_t animationIndex = 0;
+	float animationTimer = 0.0f;
+	bool animate = true;
+
+	void SetupNodeDescriptorSet(vkglTF::Node* node, const VkDescriptorPool& descriptorPool, const DescriptorSetLayouts& descriptorSetLayouts,
+		const VkDevice& device)
+	{
+		if (node->mesh)
+		{
+			VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+			descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			descriptorSetAllocInfo.descriptorPool = descriptorPool;
+			descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.node;
+			descriptorSetAllocInfo.descriptorSetCount = 1;
+			RapidVulkan::CheckError(vkAllocateDescriptorSets(device, &descriptorSetAllocInfo, &node->mesh->uniformBuffer.descriptorSet));
+
+			VkWriteDescriptorSet writeDescriptorSet{};
+			writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSet.descriptorCount = 1;
+			writeDescriptorSet.dstSet = node->mesh->uniformBuffer.descriptorSet;
+			writeDescriptorSet.dstBinding = 0;
+			writeDescriptorSet.pBufferInfo = &node->mesh->uniformBuffer.descriptor;
+
+			vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, nullptr);
+		}
+		for (auto& child : node->children)
+		{
+			SetupNodeDescriptorSet(child, descriptorPool, descriptorSetLayouts, device);
+		}
+	}
+
+	void renderNode(vkglTF::Node* node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode, VkCommandBuffer cmdBuffer)
+	{
+		if (node->mesh)
+		{
+			// Render mesh primitives
+			for (vkglTF::Primitive* primitive : node->mesh->primitives)
+			{
+				//if (primitive->material.alphaMode == alphaMode)
+				{
+					const std::vector<VkDescriptorSet> descriptorsets = 
+					{
+					  g_descriptorSets[cbIndex].scene,
+					  node->mesh->uniformBuffer.descriptorSet,
+					};
+					vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,
+						static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
+
+					if (primitive->hasIndices)
+					{
+						vkCmdDrawIndexed(cmdBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+					}
+					else
+					{
+						vkCmdDraw(cmdBuffer, primitive->vertexCount, 1, 0, 0);
+					}
+				}
+			}
+		};
+		for (auto child : node->children)
+		{
+			renderNode(child, cbIndex, alphaMode, cmdBuffer);
+		}
+	}
+	
+	
+	VkFormat FindDepthFormat();
+
 	void CreateInstance()
 	{
 		VkApplicationInfo appInfo{};
@@ -61,7 +189,13 @@ namespace BadgerSandbox
 		createInfo.enabledExtensionCount = static_cast<uint32_t>(confirmedExtensionNames.size());
 		createInfo.ppEnabledExtensionNames = confirmedExtensionNames.data();
 
-		createInfo.enabledLayerCount = 0;
+		const std::vector<const char*> validationLayers = 
+		{
+	      "VK_LAYER_KHRONOS_validation"
+		};
+		
+		createInfo.enabledLayerCount = 1;
+		createInfo.ppEnabledLayerNames = validationLayers.data();
 		createInfo.pNext = nullptr;
 
 		instance.Reset(createInfo);
@@ -250,16 +384,16 @@ namespace BadgerSandbox
 		// with nonlinear color space
 		for (VkSurfaceFormatKHR& sf : surfaceFormats)
 		{
-			if (sf.format == VK_FORMAT_R8G8B8A8_UNORM)
+			if (sf.format == VK_FORMAT_B8G8R8A8_SRGB)
 			{
 				selectedSurfaceFormat = sf;
 				break;
 			}
 		}
-		if (selectedSurfaceFormat.format != VK_FORMAT_R8G8B8A8_UNORM)
+		if (selectedSurfaceFormat.format != VK_FORMAT_B8G8R8A8_SRGB)
 		{
-			std::cout << "Found an undefined format, forcing RGBA8888 UNORM";
-			selectedSurfaceFormat.format = VK_FORMAT_R8G8B8A8_UNORM;
+			std::cout << "Found an undefined format, forcing BGRA8888 UNORM";
+			selectedSurfaceFormat.format = VK_FORMAT_B8G8R8A8_SRGB;
 			selectedSurfaceFormat.colorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
 		}
 
@@ -361,8 +495,8 @@ namespace BadgerSandbox
 
 	void CreateRenderPass()
 	{
-		std::array<VkAttachmentDescription, 1> attachmentDescriptions
-		{
+		std::array<VkAttachmentDescription, 2> attachmentDescriptions 
+		{ {
 		 {
 			0,                                   // VkAttachmentDescriptionFlags   flags
 			selectedSurfaceFormat.format,        // VkFormat                       format
@@ -373,16 +507,31 @@ namespace BadgerSandbox
 			VK_ATTACHMENT_STORE_OP_DONT_CARE,    // VkAttachmentStoreOp            stencilStoreOp
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,     // VkImageLayout                  initialLayout;
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR      // VkImageLayout                  finalLayout
+		 },
+		 {
+		   0,                                   // VkAttachmentDescriptionFlags   flags
+		   FindDepthFormat(),                   // VkFormat                       format
+		   VK_SAMPLE_COUNT_1_BIT,               // VkSampleCountFlagBits          samples
+		   VK_ATTACHMENT_LOAD_OP_CLEAR,         // VkAttachmentLoadOp             loadOp
+		   VK_ATTACHMENT_STORE_OP_DONT_CARE,    // VkAttachmentStoreOp            storeOp
+		   VK_ATTACHMENT_LOAD_OP_DONT_CARE,     // VkAttachmentLoadOp             stencilLoadOp
+		   VK_ATTACHMENT_STORE_OP_DONT_CARE,    // VkAttachmentStoreOp            stencilStoreOp
+		   VK_IMAGE_LAYOUT_UNDEFINED,           // VkImageLayout                  initialLayout;
+		   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL      // VkImageLayout                  finalLayout
 		 }
-		};
+		} };
 
-		std::array<VkAttachmentReference, 1> colorAttachmentReferences
-		{
+		std::array<VkAttachmentReference, 2> attachmentReferences
+		{ {
 		  {
 			0,                                          // uint32_t                       attachment
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL    // VkImageLayout                  layout
+		  },
+		  {
+            1,                                                 // uint32_t                       attachment
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL   // VkImageLayout                  layout
 		  }
-		};
+		} };
 
 		std::array<VkSubpassDescription, 1> subpassesDescriptions
 		{
@@ -391,10 +540,10 @@ namespace BadgerSandbox
 			VK_PIPELINE_BIND_POINT_GRAPHICS,            // VkPipelineBindPoint            pipelineBindPoint
 			0,                                          // uint32_t                       inputAttachmentCount
 			nullptr,                                    // const VkAttachmentReference   *pInputAttachments
-			colorAttachmentReferences.size(),           // uint32_t                       colorAttachmentCount
-			colorAttachmentReferences.data(),           // const VkAttachmentReference   *pColorAttachments
+			1,                                          // uint32_t                       colorAttachmentCount
+			&attachmentReferences[0],                   // const VkAttachmentReference   *pColorAttachments
 			nullptr,                                    // const VkAttachmentReference   *pResolveAttachments
-			nullptr,                                    // const VkAttachmentReference   *pDepthStencilAttachment
+			&attachmentReferences[1],                   // const VkAttachmentReference   *pDepthStencilAttachment
 			0,                                          // uint32_t                       preserveAttachmentCount
 			nullptr                                     // const uint32_t*                pPreserveAttachments
 		  }
@@ -405,21 +554,12 @@ namespace BadgerSandbox
 		  {
 			VK_SUBPASS_EXTERNAL,                            // uint32_t                       srcSubpass
 			0,                                              // uint32_t                       dstSubpass
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,           // VkPipelineStageFlags           srcStageMask
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // VkPipelineStageFlags           dstStageMask
-			VK_ACCESS_MEMORY_READ_BIT,                      // VkAccessFlags                  srcAccessMask
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,           // VkAccessFlags                  dstAccessMask
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,           // VkPipelineStageFlags           srcStageMask
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,           // VkPipelineStageFlags           dstStageMask
+			0,                      // VkAccessFlags                  srcAccessMask
+			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,                   // VkAccessFlags                  dstAccessMask
 			VK_DEPENDENCY_BY_REGION_BIT                     // VkDependencyFlags              dependencyFlags
 		  },
-		  {
-			0,                                              // uint32_t                       srcSubpass
-			VK_SUBPASS_EXTERNAL,                            // uint32_t                       dstSubpass
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  // VkPipelineStageFlags           srcStageMask
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,           // VkPipelineStageFlags           dstStageMask
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,           // VkAccessFlags                  srcAccessMask
-			VK_ACCESS_MEMORY_READ_BIT,                      // VkAccessFlags                  dstAccessMask
-			VK_DEPENDENCY_BY_REGION_BIT                     // VkDependencyFlags              dependencyFlags
-		  }
 		};
 
 		VkRenderPassCreateInfo renderPassCreateInfo =
@@ -547,25 +687,19 @@ namespace BadgerSandbox
 		{
 		  {
 			0,                                                          // uint32_t                                       binding
-			sizeof(VertexData),                                         // uint32_t                                       stride
+			sizeof(vkglTF::Model::Vertex),                              // uint32_t                                       stride
 			VK_VERTEX_INPUT_RATE_VERTEX                                 // VkVertexInputRate                              inputRate
 		  }
 		};
 
 		std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions =
 		{
-		  {
-			0,                                                          // uint32_t                                       location
-			vertexInputBindingDescriptions[0].binding,                  // uint32_t                                       binding
-			VK_FORMAT_R32G32B32A32_SFLOAT,                              // VkFormat                                       format
-			offsetof(struct VertexData, x)                              // uint32_t                                       offset
-		  },
-		  {
-			1,                                                          // uint32_t                                       location
-			vertexInputBindingDescriptions[0].binding,                  // uint32_t                                       binding
-			VK_FORMAT_R32G32_SFLOAT,                                    // VkFormat                                       format
-			offsetof(struct VertexData, u)                              // uint32_t                                       offset
-		  }
+		  {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+		  {1, 0, VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 3},
+		  {2, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 6},
+		  {3, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 8},
+		  {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 10},
+		  {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 14}
 		};
 
 		VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
@@ -584,7 +718,7 @@ namespace BadgerSandbox
 		  VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,  // VkStructureType                                sType
 		  nullptr,                                                      // const void                                    *pNext
 		  0,                                                            // VkPipelineInputAssemblyStateCreateFlags        flags
-		  VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,                         // VkPrimitiveTopology                            topology
+		  VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,                         // VkPrimitiveTopology                            topology
 		  VK_FALSE                                                      // VkBool32                                       primitiveRestartEnable
 		};
 
@@ -644,6 +778,18 @@ namespace BadgerSandbox
 		  VK_FALSE                                                      // VkBool32                                       alphaToOneEnable
 		};
 
+		VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo =
+		{
+			VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+			nullptr,
+			0,
+			VK_TRUE,
+			VK_TRUE,
+			VK_COMPARE_OP_LESS,
+			VK_FALSE,
+			VK_FALSE,
+		};
+
 		VkPipelineColorBlendAttachmentState colorBlendAttachmentState =
 		{
 		  VK_FALSE,                                                     // VkBool32                                       blendEnable
@@ -669,13 +815,16 @@ namespace BadgerSandbox
 		  { 0.0f, 0.0f, 0.0f, 0.0f }                                    // float                                          blendConstants[4]
 		};
 
+		// Pipeline layout
+		const std::vector<VkDescriptorSetLayout> setLayouts = { g_descriptorSetLayouts.scene, g_descriptorSetLayouts.node };
+		
 		VkPipelineLayoutCreateInfo layoutCreateInfo =
 		{
 		  VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,  // VkStructureType                sType
 		  nullptr,                                        // const void                    *pNext
 		  0,                                              // VkPipelineLayoutCreateFlags    flags
-		  1,                                              // uint32_t                       setLayoutCount
-		  &dsLayout,                                      // const VkDescriptorSetLayout   *pSetLayouts
+		  setLayouts.size(),                              // uint32_t                       setLayoutCount
+		  setLayouts.data(),                              // const VkDescriptorSetLayout   *pSetLayouts
 		  0,                                              // uint32_t                       pushConstantRangeCount
 		  nullptr                                         // const VkPushConstantRange     *pPushConstantRanges
 		};
@@ -698,7 +847,7 @@ namespace BadgerSandbox
 		  &viewportStateCreateInfo,                                     // const VkPipelineViewportStateCreateInfo       *pViewportState
 		  &rasterizationStateCreateInfo,                                // const VkPipelineRasterizationStateCreateInfo  *pRasterizationState
 		  &multisampleStateCreateInfo,                                  // const VkPipelineMultisampleStateCreateInfo    *pMultisampleState
-		  nullptr,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
+		  &depthStencilCreateInfo,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
 		  &colorBlendStateCreateInfo,                                   // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
 		  &dynamicStateCreateInfo,                                      // const VkPipelineDynamicStateCreateInfo        *pDynamicState
 		  pipelineLayout,                                               // VkPipelineLayout                               layout
@@ -707,7 +856,7 @@ namespace BadgerSandbox
 		  VK_NULL_HANDLE,                                               // VkPipeline                                     basePipelineHandle
 		  -1                                                            // int32_t                                        basePipelineIndex
 		};
-		VkPipelineCache newCache;
+		VkPipelineCache newCache = VK_NULL_HANDLE;
 		graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
 	}
 
@@ -926,14 +1075,19 @@ namespace BadgerSandbox
 
 	void CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
 	{
+		std::array<VkImageView, 2> attachments = 
+		{
+				imageView.Get(),
+				depthImageView
+		};
 		VkFramebufferCreateInfo framebufferCreateInfo =
 		{
 		  VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,      // VkStructureType                sType
 		  nullptr,                                        // const void                    *pNext
 		  0,                                              // VkFramebufferCreateFlags       flags
 		  renderPass.Get(),                               // VkRenderPass                   renderPass
-		  1,                                              // uint32_t                       attachmentCount
-		  imageView.GetPointer(),                         // const VkImageView             *pAttachments
+		  attachments.size(),                             // uint32_t                       attachmentCount
+		  attachments.data(),                             // const VkImageView             *pAttachments
 		  swapchainExtent.width,                          // uint32_t                       width
 		  swapchainExtent.height,                         // uint32_t                       height
 		  1                                               // uint32_t                       layers
@@ -963,10 +1117,9 @@ namespace BadgerSandbox
 		  1                                                   // uint32_t                               layerCount
 		};
 
-		VkClearValue clearValue =
-		{
-		  { 1.0f, 0.8f, 0.4f, 0.0f },                         // VkClearColorValue                      color
-		};
+		std::array<VkClearValue, 2> clearValues{};
+		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+		clearValues[1].depthStencil = { 1.0f, 0 };
 
 		VkRenderPassBeginInfo renderPassBeginInfo =
 		{
@@ -981,9 +1134,21 @@ namespace BadgerSandbox
 			},
 			swapchainExtent,                                  // VkExtent2D                             extent;
 		  },
-		  1,                                                  // uint32_t                               clearValueCount
-		  &clearValue                                         // const VkClearValue                    *pClearValues
+		  clearValues.size(),                                                  // uint32_t                               clearValueCount
+		  clearValues.data()                                         // const VkClearValue                    *pClearValues
 		};
+
+		// Update UBOs
+		g_shaderValuesScene.projection = saschaCamera.matrices.perspective;
+		g_shaderValuesScene.view = saschaCamera.matrices.view;
+		g_shaderValuesScene.camPos =
+			glm::vec3(-saschaCamera.position.z * sin(glm::radians(saschaCamera.rotation.y)) * cos(glm::radians(saschaCamera.rotation.x)),
+				-saschaCamera.position.z * sin(glm::radians(saschaCamera.rotation.x)),
+				saschaCamera.position.z * cos(glm::radians(saschaCamera.rotation.y)) * cos(glm::radians(saschaCamera.rotation.x)));
+
+		UniformBufferSet currentUB = g_uniformBuffers[resourceIndex];
+		memcpy(currentUB.scene.mapped, &g_shaderValuesScene, sizeof(g_shaderValuesScene));
+		memcpy(currentUB.params.mapped, &g_shaderParams, sizeof(shaderValuesParams));
 
 		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1014,9 +1179,18 @@ namespace BadgerSandbox
 		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &scissor);
 
 		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &vertexBuffer, &offset);
-		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &ds, 0, nullptr);
-		vkCmdDraw(commandBuffers[resourceIndex], 4, 1, 0, 0);
+		vkglTF::Model& model = g_models.scene;
+		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &model.vertices.buffer, &offset);
+		if (model.indices.buffer != VK_NULL_HANDLE)
+		{
+			vkCmdBindIndexBuffer(commandBuffers[resourceIndex], model.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+
+		// Opaque primitives first
+		for (auto node : model.nodes)
+		{
+			renderNode(node, resourceIndex, vkglTF::Material::ALPHAMODE_OPAQUE, commandBuffers[resourceIndex]);
+		}
 
 		vkCmdEndRenderPass(commandBuffers[resourceIndex]);
 
@@ -1292,57 +1466,87 @@ namespace BadgerSandbox
 		vkDeviceWaitIdle(device.Get());
 	}
 
-	void CreateDescriptorSetLayout()
+	void CreateDescriptorSetLayoutScene()
 	{
-		VkDescriptorSetLayoutBinding layoutBinding =
-		{
-		  0,                                                    // uint32_t                             binding
-		  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,            // VkDescriptorType                     descriptorType
-		  1,                                                    // uint32_t                             descriptorCount
-		  VK_SHADER_STAGE_FRAGMENT_BIT,                         // VkShaderStageFlags                   stageFlags
-		  nullptr                                               // const VkSampler                     *pImmutableSamplers
-		};
+		std::array<VkDescriptorSetLayoutBinding, 2> layoutBindings =
+		{ {
+		  {
+			0,                                                    // uint32_t                             binding
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,                    // VkDescriptorType                     descriptorType
+		    1,                                                    // uint32_t                             descriptorCount
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,                         // VkShaderStageFlags                   stageFlags
+		    nullptr                                               // const VkSampler                     *pImmutableSamplers
+		  },
+		  {
+			1,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			1,
+			VK_SHADER_STAGE_FRAGMENT_BIT,
+			nullptr
+		  }
+		}};
 
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo =
 		{
 		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,  // VkStructureType                      sType
 		  nullptr,                                              // const void                          *pNext
 		  0,                                                    // VkDescriptorSetLayoutCreateFlags     flags
-		  1,                                                    // uint32_t                             bindingCount
-		  &layoutBinding                                       // const VkDescriptorSetLayoutBinding  *pBindings
+		  layoutBindings.size(),                                                    // uint32_t                             bindingCount
+		  layoutBindings.data()                                       // const VkDescriptorSetLayoutBinding  *pBindings
 		};
 
-		if (vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &dsLayout) != VK_SUCCESS)
+		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &g_descriptorSetLayouts.scene));
+	}
+
+	void CreateDescriptorSetLayoutNode()
+	{
+		VkDescriptorSetLayoutBinding setLayoutBinding = 
+        {
+		  0, 
+		  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		  1,
+		  VK_SHADER_STAGE_VERTEX_BIT,
+		  nullptr
+		};
+
+		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo =
 		{
-			throw std::runtime_error("Could not create descriptor set layout!");
-		}
+		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		  nullptr,
+		  0,
+		  1,
+		  &setLayoutBinding
+		};
+
+		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &g_descriptorSetLayouts.node));
 	}
 
 	void CreateDescriptorPool()
 	{
-		VkDescriptorPoolSize poolSize =
+		uint32_t meshCount = 0;
+		std::vector<vkglTF::Model*> modellist = { &g_models.scene };
+		for (auto& model : modellist)
 		{
-		  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,      // VkDescriptorType               type
-		  1                                               // uint32_t                       descriptorCount
-		};
-
-		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo =
-		{
-		  VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,  // VkStructureType                sType
-		  nullptr,                                        // const void                    *pNext
-		  0,                                              // VkDescriptorPoolCreateFlags    flags
-		  1,                                              // uint32_t                       maxSets
-		  1,                                              // uint32_t                       poolSizeCount
-		  &poolSize                                      // const VkDescriptorPoolSize    *pPoolSizes
-		};
-
-		if (vkCreateDescriptorPool(device.Get(), &descriptorPoolCreateInfo, nullptr, &dPool) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Could not create descriptor pool!");
+			for (auto node : model->linearNodes)
+			{
+				if (node->mesh)
+				{
+					meshCount++;
+				}
+			}
 		}
+
+		std::vector<VkDescriptorPoolSize> poolSizes = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (4 + meshCount) * renderResourcesCount} };
+		VkDescriptorPoolCreateInfo descriptorPoolCI{};
+		descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		descriptorPoolCI.poolSizeCount = poolSizes.size();
+		descriptorPoolCI.pPoolSizes = poolSizes.data();
+		descriptorPoolCI.maxSets = (2 + meshCount) * renderResourcesCount;
+		
+		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCI, nullptr, &dPool));
 	}
 
-	void AllocateDescriptorSet()
+	void AllocateDescriptorSetScene()
 	{
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
 		{
@@ -1350,43 +1554,227 @@ namespace BadgerSandbox
 		  nullptr,                                        // const void                    *pNext
 		  dPool,                                          // VkDescriptorPool               descriptorPool
 		  1,                                              // uint32_t                       descriptorSetCount
-		  &dsLayout                                       // const VkDescriptorSetLayout   *pSetLayouts
+		  &g_descriptorSetLayouts.scene                   // const VkDescriptorSetLayout   *pSetLayouts
 		};
-
-		if (vkAllocateDescriptorSets(device.Get(), &descriptorSetAllocateInfo, &ds) != VK_SUCCESS)
+		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-			throw std::runtime_error("Could not allocate descriptor set!");
+			RapidVulkan::CheckError(vkAllocateDescriptorSets(device.Get(), &descriptorSetAllocateInfo, &g_descriptorSets[i].scene));
 		}
 	}
 
-	void UpdateDescriptorSet()
+	void AllocateDescriptorSetNode()
 	{
-		VkDescriptorImageInfo imageInfo =
+		for (auto& node : g_models.scene.nodes)
 		{
-		  textureSampler,                             // VkSampler                      sampler
-		  textureImageView,                           // VkImageView                    imageView
-		  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL    // VkImageLayout                  imageLayout
-		};
+			SetupNodeDescriptorSet(node, dPool, g_descriptorSetLayouts, device.Get());
+		}
+	}
 
-		VkWriteDescriptorSet descriptorWrites =
+	void UpdateDescriptorSetScene()
+	{
+		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-		  VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,     // VkStructureType                sType
-		  nullptr,                                    // const void                    *pNext
-		  ds,                                         // VkDescriptorSet                dstSet
-		  0,                                          // uint32_t                       dstBinding
-		  0,                                          // uint32_t                       dstArrayElement
-		  1,                                          // uint32_t                       descriptorCount
-		  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  // VkDescriptorType               descriptorType
-		  &imageInfo,                                 // const VkDescriptorImageInfo   *pImageInfo
-		  nullptr,                                    // const VkDescriptorBufferInfo  *pBufferInfo
-		  nullptr                                     // const VkBufferView            *pTexelBufferView
-		};
+			std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
-		vkUpdateDescriptorSets(device.Get(), 1, &descriptorWrites, 0, nullptr);
+			writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSets[0].descriptorCount = 1;
+			writeDescriptorSets[0].dstSet = g_descriptorSets[i].scene;
+			writeDescriptorSets[0].dstBinding = 0;
+			writeDescriptorSets[0].pBufferInfo = &g_uniformBuffers[i].scene.descriptor;
+
+			writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSets[1].descriptorCount = 1;
+			writeDescriptorSets[1].dstSet = g_descriptorSets[i].scene;
+			writeDescriptorSets[1].dstBinding = 1;
+			writeDescriptorSets[1].pBufferInfo = &g_uniformBuffers[i].params.descriptor;
+
+			vkUpdateDescriptorSets(device.Get(), static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+		}
+	}
+
+	void UpdateDescriptorSetNode()
+	{
+	
+	}
+
+	/*
+      Took this function from VulkanTutorial:
+      https://vulkan-tutorial.com/
+    */
+	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	{
+		VkPhysicalDeviceMemoryProperties memProperties;
+		vkGetPhysicalDeviceMemoryProperties(selectedPhysicalDevice, &memProperties);
+
+		for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+		{
+			if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+			{
+				return i;
+			}
+		}
+
+		throw std::runtime_error("failed to find suitable memory type!");
+	}
+
+	/*
+	  Took this function from VulkanTutorial:
+	  https://vulkan-tutorial.com/
+	*/
+	void CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+	{
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = format;
+		imageInfo.tiling = tiling;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage = usage;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (vkCreateImage(device.Get(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create image!");
+		}
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(device.Get(), image, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, properties);
+
+		if (vkAllocateMemory(device.Get(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate image memory!");
+		}
+
+		vkBindImageMemory(device.Get(), image, imageMemory, 0);
+	}
+
+	/*
+	  Took this function from VulkanTutorial:
+	  https://vulkan-tutorial.com/
+	*/
+	VkImageView CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) 
+	{
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = image;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = format;
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		VkImageView imageView;
+		if (vkCreateImageView(device.Get(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) 
+		{
+			throw std::runtime_error("failed to create texture image view!");
+		}
+		return imageView;
+	}
+
+	/*
+	  Took this function from VulkanTutorial:
+	  https://vulkan-tutorial.com/
+	*/
+	VkFormat FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) 
+	{
+		for (VkFormat format : candidates) 
+		{
+			VkFormatProperties props;
+			vkGetPhysicalDeviceFormatProperties(selectedPhysicalDevice, format, &props);
+
+			if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) 
+			{
+				return format;
+			}
+			else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) 
+			{
+				return format;
+			}
+		}
+		throw std::runtime_error("failed to find supported format!");
+	}
+
+	/*
+	  Took this function from VulkanTutorial:
+	  https://vulkan-tutorial.com/
+	*/
+	VkFormat FindDepthFormat() 
+	{
+		return FindSupportedFormat(
+			{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+		);
+	}
+
+	/*
+	  Took this function from VulkanTutorial:
+	  https://vulkan-tutorial.com/
+	*/
+	void CreateDepthImage()
+	{
+		VkFormat depthFormat = FindDepthFormat();
+		CreateImageVulkanTutorial(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+		depthImageView = CreateImageViewVulkanTutorial(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+	}
+
+	void PopulateSaschaWillemsStructures()
+	{
+		saschaDevice.Reset(selectedPhysicalDevice, device.Get(), graphicsCommandPool.Get());
+		g_uniformBuffers.resize(renderResourcesCount);
+		g_descriptorSets.resize(renderResourcesCount);
+		saschaCamera.type = Camera::CameraType::lookat;
+		saschaCamera.setPerspective(45.0f, 1920.0 / 1080.0, 0.1f, 256.0f);
+		saschaCamera.rotationSpeed = 0.25f;
+		saschaCamera.movementSpeed = 0.1f;
+		saschaCamera.setPosition({ 0.0f, 0.0f, 1.0f });
+		saschaCamera.setRotation({ 0.0f, 0.0f, 0.0f });
+
+		for (auto& uniformBuffer : g_uniformBuffers)
+		{
+			uniformBuffer.scene.create(&saschaDevice, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(g_shaderValuesScene));
+			uniformBuffer.params.create(&saschaDevice, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(shaderValuesParams));
+		}
+
+		g_shaderValuesScene.projection = saschaCamera.matrices.perspective;
+		g_shaderValuesScene.view = saschaCamera.matrices.view;
+
+		g_shaderValuesScene.camPos =
+			glm::vec3(-saschaCamera.position.z * sin(glm::radians(saschaCamera.rotation.y)) * cos(glm::radians(saschaCamera.rotation.x)),
+				-saschaCamera.position.z * sin(glm::radians(saschaCamera.rotation.x)),
+				saschaCamera.position.z * cos(glm::radians(saschaCamera.rotation.y)) * cos(glm::radians(saschaCamera.rotation.x)));
+
+		g_models.scene.destroy(device.Get());
+		g_models.scene.loadFromFile(std::string(UDACITY_FINAL_PROJECT_CONTENT) + "JillHipHop.gltf", &saschaDevice, queue);
 	}
 
 	void Draw()
 	{
+		if ((animate) && (g_models.scene.animations.size() > 0))
+		{
+			animationTimer += 0.0016;
+			if (animationTimer > g_models.scene.animations[animationIndex].end)
+			{
+				animationTimer -= g_models.scene.animations[animationIndex].end;
+			}
+			g_models.scene.updateAnimation(animationIndex, animationTimer);
+		}
+		
 		static size_t resourceIndex = 0;
 		uint32_t imageIndex;
 
@@ -1450,13 +1838,18 @@ namespace BadgerSandbox
 			CreateSwapchain();
 			CreateRenderPass();
 			CreateSwapchainImageViews();
+			CreateDepthImage();
 			CreateGraphicsCommandsBuffers();
-			CreateVertexBuffer();
-			CreateTexture();
-			CreateDescriptorSetLayout();
+			PopulateSaschaWillemsStructures();
+			//CreateVertexBuffer();
+			//CreateTexture();
+			CreateDescriptorSetLayoutScene();
+			CreateDescriptorSetLayoutNode();
 			CreateDescriptorPool();
-			AllocateDescriptorSet();
-			UpdateDescriptorSet();
+			AllocateDescriptorSetScene();
+			AllocateDescriptorSetNode();
+			UpdateDescriptorSetScene();
+			UpdateDescriptorSetNode();
 			CreateGraphicsPipeline();
 		}
 		catch (...)
@@ -1467,12 +1860,13 @@ namespace BadgerSandbox
 
 	void CreateVulkanWindow()
 	{
-		WindowInit(window);
+		window = WindowInit();
 		presentationExtensions = WindowGetPresentationExtensions();
 		for (const auto& extension : presentationExtensions)
 		{
 			requestedExtensions[extension] = false;
 		}
+
 	}
 }
 

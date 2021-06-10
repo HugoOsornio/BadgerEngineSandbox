@@ -2,11 +2,11 @@
 
 namespace BadgerSandbox
 {
-	void WindowInit(GLFWwindow* window)
+	GLFWwindow* WindowInit()
 	{
 		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		window = glfwCreateWindow(1920, 1080, "UdacityFinalProject", nullptr, nullptr);
+		return glfwCreateWindow(1920, 1080, "UdacityFinalProject", nullptr, nullptr);
 	}
 
 	std::vector<std::string> WindowGetPresentationExtensions()
