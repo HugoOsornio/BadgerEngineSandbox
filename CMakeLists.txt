@@ -98,6 +98,7 @@ add_executable(UdacityFinalProject SelfContainedSamples/UdacityFinalProject/Udac
 target_compile_definitions(UdacityFinalProject PUBLIC -DUDACITY_FINAL_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/SelfContainedSamples/UdacityFinalProject/Content/")
 target_link_libraries(UdacityFinalProject ${Vulkan_LIBRARY} glfw RapidVulkan tinygltf glm)
 
-# add_executable(MultithreadedModels Sandbox/MultithreadedModels/MultithreadedModels.cpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
-# target_include_directories(MultithreadedModels PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window>)
-# target_link_libraries(ApiWithoutSecrets ${Vulkan_LIBRARY} glfw)
+add_executable(VectorVulkanTest Sandbox/VectorVulkanTest/VectorVulkanTest.cpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp Sandbox/Vector/Vector3D.cpp)
+target_include_directories(VectorVulkanTest PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Vector>)
+target_compile_definitions(VectorVulkanTest PUBLIC -DVECTOR_TEST_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/Sandbox/VectorVulkanTest/Content/")
+target_link_libraries(VectorVulkanTest ${Vulkan_LIBRARY} glfw RapidVulkan)

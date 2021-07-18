@@ -18,8 +18,8 @@ namespace BadgerSandbox
 
 namespace BadgerSandbox
 {
-  std::shared_ptr<IWindow> WindowFactory::Allocate(const std::array<uint32_t, 2>& _windowSize, const std::array<uint32_t, 2>& _windowPosition)
+  std::shared_ptr<IWindow> WindowFactory::Create(const std::array<uint32_t, 2>& _windowSize, const std::array<uint32_t, 2>& _windowPosition, const std::string& _windowName)
   {
-    return std::make_shared<Window>(_windowSize, _windowPosition);
+    return std::make_shared<Window>(_windowSize, _windowPosition, _windowName);
   }
 }
