@@ -54,4 +54,9 @@ namespace BadgerSandbox
 	   glfwPollEvents();
 	   return glfwWindowShouldClose(m_nativeWindow);
    }
+
+   void* WindowWin32::GetNativeWindow()
+   {
+	   return (void*)m_nativeWindow;
+   }
 }

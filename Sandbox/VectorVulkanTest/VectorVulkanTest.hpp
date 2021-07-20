@@ -18,6 +18,13 @@
 #include <RapidVulkan/CommandBuffers.hpp>
 #include "IWindow.hpp"
 
+#include "Matrix4D.hpp"
+#include "Matrix3D.hpp"
+
+#define GLM_DEPTH_ZERO_TO_ONE   1
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace BadgerSandbox
 {
@@ -35,7 +42,6 @@ namespace BadgerSandbox
         VkDeviceMemory memory = VK_NULL_HANDLE;
         void* mapped = nullptr;
     };
-
 
     // TO DO: Create a base application that creates a swapchain with a Color and Depth attachment
 	class VectorTestApplication
@@ -92,6 +98,29 @@ namespace BadgerSandbox
 
         std::vector<uniformBuffer> matrixUniformBuffers;
 
+        Matrix4D modelMatrix;
+        glm::mat4 glmModelMatrix;
+
+        Matrix4D viewMatrix;
+        glm::mat4 glmViewMatrix;
+
+        Matrix4D projectionMatrix;
+        glm::mat4 glmProjectionMatrix;
+        
+        Matrix4D modelViewMatrix;
+        glm::mat4 glmModelViewMatrix;
+
+        Matrix4D MVPMatrix;
+        glm::mat4 glmMVPMatrix;
+
+        Vector3D up;
+        Vector3D eyeLocation;
+        Vector3D eyeDirection;
+
+        Vector3D initialUp;
+        Vector3D initialEyeLocation;
+        Vector3D initialEyeDirection;
+
         void AllocateDescriptorSet();
         void CreateDepthImage();
         void CreateDescriptorPool();
@@ -118,11 +147,17 @@ namespace BadgerSandbox
         void CreateUniformBuffers();
         void CreateVertexBuffer();
         void UpdateDescriptorSet();
+        Matrix3D Rotate(const float angle, const Vector3D axis);
+        Matrix4D LookAt();
+        Matrix4D Perspective(float r, float l, float t, float b, float f, float n);
+        Matrix4D Perspective(float fov, float aspect, float far, float near);
 	public:
         std::shared_ptr<IWindow> window;
         VectorTestApplication();
 		~VectorTestApplication();
         void Draw();
+        void RotateHorizontal(float angle);
+        void RotateVertical(float angle);
 	};
 	
 

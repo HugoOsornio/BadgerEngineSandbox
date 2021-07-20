@@ -18,6 +18,7 @@ namespace BadgerSandbox
 	std::vector<std::string> GetWindowExtensions();
 	void GetVulkanSurfaceFromWindow(VkInstance, VkSurfaceKHR* surface);
 	bool ShouldWindowClose();
+	void* GetNativeWindow();
 
 	private:
 	GLFWwindow* m_nativeWindow;

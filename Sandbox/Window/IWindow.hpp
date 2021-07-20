@@ -19,5 +19,6 @@ namespace BadgerSandbox
     virtual std::vector<std::string> GetWindowExtensions() = 0;
     virtual void GetVulkanSurfaceFromWindow(VkInstance instance, VkSurfaceKHR* surface) = 0;
     virtual bool ShouldWindowClose() = 0;
+    virtual void* GetNativeWindow() = 0;
   };
 }

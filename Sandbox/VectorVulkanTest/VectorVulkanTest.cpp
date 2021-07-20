@@ -2,8 +2,9 @@
 #include <iostream>
 #include <array>
 #include "WindowFactory.hpp"
-#include "Vector3D.hpp"
 #include "VectorVulkanTest.hpp"
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 namespace BadgerSandbox
 {
@@ -669,7 +670,7 @@ namespace BadgerSandbox
 			0,                                                    // uint32_t                             binding
 			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,                    // VkDescriptorType                     descriptorType
 			1,                                                    // uint32_t                             descriptorCount
-			VK_SHADER_STAGE_FRAGMENT_BIT,                         // VkShaderStageFlags                   stageFlags
+			VK_SHADER_STAGE_VERTEX_BIT,                         // VkShaderStageFlags                   stageFlags
 			nullptr                                               // const VkSampler                     *pImmutableSamplers
 		};
 
@@ -778,10 +779,16 @@ namespace BadgerSandbox
 
 	void VectorTestApplication::CreateVertexBuffer()
 	{
-		float vertexData[2][3] =
+		float vertexData[6][8] =
 		{
-			{0.0, 0.0, 0.0},
-			{0.5, 0.0, 0.0}
+			{0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0},
+			{0.5, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0},
+			
+			{0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0},
+			{0.0, 0.5, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0},
+			
+			{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0},
+			{0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1.0, 1.0}
 		};
 		
 		vertexBuffers.resize(renderResourcesCount);
@@ -876,12 +883,15 @@ namespace BadgerSandbox
 		VkVertexInputBindingDescription vertexInputBindingDescription =
 		{
 			0,                                                          // uint32_t                                       binding
-			sizeof(float) * 3,                                          // uint32_t                                       stride
+			sizeof(float) * 8,                                          // uint32_t                                       stride
 			VK_VERTEX_INPUT_RATE_VERTEX                                 // VkVertexInputRate                              inputRate
 		};
-		
-		VkVertexInputAttributeDescription vertexAttributeDescription =
-		{ 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 };
+
+		std::array<VkVertexInputAttributeDescription, 2> vertexAttributeDescriptions =
+		{ {
+		  { 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0 },
+		  { 1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 4 }
+		} };
 
 		VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
 		  VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,      // VkStructureType                                sType
@@ -889,8 +899,8 @@ namespace BadgerSandbox
 		  0,                                                              // VkPipelineVertexInputStateCreateFlags          flags;
 		  1,                                                              // uint32_t                                       vertexBindingDescriptionCount
 		  &vertexInputBindingDescription,                                 // const VkVertexInputBindingDescription         *pVertexBindingDescriptions
-		  1,                                                              // uint32_t                                       vertexAttributeDescriptionCount
-		  &vertexAttributeDescription                                     // const VkVertexInputAttributeDescription       *pVertexAttributeDescriptions
+		  vertexAttributeDescriptions.size(),                             // uint32_t                                       vertexAttributeDescriptionCount
+		  vertexAttributeDescriptions.data()                              // const VkVertexInputAttributeDescription       *pVertexAttributeDescriptions
 		};
 
 
@@ -1107,8 +1117,31 @@ namespace BadgerSandbox
 		};
 
 		// Update UBOs
+		modelMatrix = Matrix4D(
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+		);
+		glmModelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
+
+		viewMatrix = LookAt();
+		glmViewMatrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+		projectionMatrix = Perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 100.0f, 0.1f);
+		glmProjectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
+
+		modelViewMatrix = viewMatrix * modelMatrix;
+		glmModelViewMatrix = glmViewMatrix * glmModelMatrix;
+		
+		MVPMatrix = projectionMatrix * viewMatrix * modelMatrix;
+		glmMVPMatrix = glmProjectionMatrix * glmViewMatrix * glmModelMatrix;
+		
 		uniformBuffer currentUniformBuffer = matrixUniformBuffers[resourceIndex];
-		//memcpy(currentUniformBuffer.mapped, &g_shaderValuesScene, sizeof(g_shaderValuesScene));
+		float* memory = (float*)currentUniformBuffer.mapped;
+		memcpy((void *)memory, modelViewMatrix.Data(), sizeof(float)*16);
+		memory += 16;
+		memcpy((void*)memory, MVPMatrix.Data(), sizeof(float) * 16);
 
 		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1140,7 +1173,9 @@ namespace BadgerSandbox
 
 		VkDeviceSize offset = 0;
 		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &vertexBuffers[resourceIndex].buffer, &offset);
-		vkCmdDraw(graphicsCommandBuffers[resourceIndex], 4, 1, 0, 0);
+		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
+			&(descriptorSets[resourceIndex]), 0, nullptr);
+		vkCmdDraw(graphicsCommandBuffers[resourceIndex], 6, 1, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffers[resourceIndex]);
 
@@ -1203,10 +1238,121 @@ namespace BadgerSandbox
 		resourceIndex = (resourceIndex + 1) % renderResourcesCount;
 	}
 
+	Matrix3D VectorTestApplication::Rotate(const float angle, const Vector3D axis)
+	{
+		Vector3D n = Normalize(axis);
+		float localCosine = cos(angle * 3.14159 / 180);
+		float localSine = sin(angle * 3.14159 / 180);
+
+		Matrix3D localMatrix(
+			( (n.x * n.x * (1 - localCosine)) + localCosine),
+			( (n.x * n.y * (1 - localCosine)) - (localSine * n.z) ),
+			( (n.x * n.z * (1 - localCosine)) + (localSine * n.y) ),
+			
+			( (n.x * n.y * (1 - localCosine)) + (localSine * n.z) ),
+			( (n.y * n.y * (1 - localCosine)) + localCosine),
+			( (n.y * n.z * (1 - localCosine)) - (localSine * n.x) ),
+
+			((n.x * n.z * (1 - localCosine)) - (localSine * n.y) ),
+			((n.y * n.z * (1 - localCosine)) + (localSine * n.x) ),
+			((n.z * n.z * (1 - localCosine)) + localCosine)
+		);
+
+		return localMatrix;
+	}
+
+	Matrix4D VectorTestApplication::LookAt()
+	{
+		Vector3D forward = Normalize(eyeDirection - eyeLocation);
+		Vector3D right = Normalize(Cross(forward, up));
+		Vector3D actualUp = Normalize(Cross(right, forward));
+
+		Matrix4D lookAtRotation;
+
+		lookAtRotation(0, 0) = right.x;
+		lookAtRotation(1, 0) = right.y;
+		lookAtRotation(2, 0) = right.z;
+
+		lookAtRotation(0, 1) = actualUp.x;
+		lookAtRotation(1, 1) = actualUp.y;
+		lookAtRotation(2, 1) = actualUp.z;
+
+		lookAtRotation(0, 2) = -forward.x;
+		lookAtRotation(1, 2) = -forward.y;
+		lookAtRotation(2, 2) = -forward.z;
+
+		lookAtRotation(0, 3) = -Dot(right, eyeLocation);
+		lookAtRotation(1, 3) = -Dot(up, eyeLocation);
+		lookAtRotation(2, 3) = Dot(forward, eyeLocation);
+
+		return lookAtRotation;
+	}
+
+	Matrix4D VectorTestApplication::Perspective(float r, float l, float t, float b, float f, float n)
+	{
+		return Matrix4D(
+			(2*n) /(r - l), 0.0f, (r + l)/(r - l), 0.0f,
+			0.0f, (2 * n) / (t - b), (t + b) / (t - b), 0.0f,
+			0.0f, 0.0f, - 0.5f * ((f + n)/(f -n)), -1.0f*((n*f)/(f - n)),
+			0.0f, 0.0f, -1.0f, 0.0f
+		);
+	}
+
+	Matrix4D VectorTestApplication::Perspective(float fov, float aspect, float zFar, float zNear)
+	{
+		float g = 1.0f / tan(fov / 2.0f);
+		float k = zFar / (zFar - zNear);
+
+		Matrix4D result (
+		  g / aspect, 0.0f, 0.0f, 0.0f,
+          0.0f, -g, 0.0f, 0.0f,
+		  0.0f, 0.0f, -k, -zNear * k,
+          0.0f, 0.0f, -1.0f, 0.0f
+	  	);
+		
+		return result;
+	}
+
+	void VectorTestApplication::RotateHorizontal(float angle)
+	{
+		//Rotation left means rotating around my up vector
+		Vector3D forward = Normalize(eyeLocation - eyeDirection);
+		Vector3D left = Cross(Normalize(up), forward);
+		Vector3D actualUp = Cross(forward, left);
+		Matrix3D rotation = Rotate(angle, actualUp);
+		eyeLocation = rotation * eyeLocation;
+		//Now we need to recalculate up
+		forward = Normalize(eyeLocation - eyeDirection);
+		left = Cross(Normalize(up), forward);
+		actualUp = Cross(forward, left);
+		up = actualUp;
+	}
+
+	void VectorTestApplication::RotateVertical(float angle)
+	{
+		//Rotation up, means rotation around my left or right vector
+		// I need to define where left is, based on the current eye position:
+		Vector3D forward = Normalize(eyeLocation - eyeDirection);
+		Vector3D left = Cross(Normalize(up), forward);
+		Matrix3D rotation = Rotate(angle, left);
+		eyeLocation = rotation * eyeLocation;
+		//Now we need to recalculate up
+		forward = Normalize(eyeLocation - eyeDirection);
+		left = Cross(Normalize(up), forward);
+		Vector3D actualUp = Cross(forward, left);
+		up = actualUp;
+	}
+
 	VectorTestApplication::VectorTestApplication()
 		: renderResourcesCount(3)
 		, suitablePhysicalDeviceIndex(0xFFFFFFFF)
 		, suitableQueueFamilyIndex(0xFFFFFFFF)
+		, up(0.0f, 1.0f, 0.0f)
+        , eyeLocation(0.0f, 0.0f, 3.0f)
+	    , eyeDirection(0.0f, 0.0f, 0.0f)
+	    , initialUp(0.0f, 1.0f, 0.0f)
+	    , initialEyeLocation(0.0f, 0.0f, 3.0f)
+	    , initialEyeDirection(0.0f, 0.0f, 0.0f)
 	{
 		WindowFactory windowFactory;
 		window = windowFactory.Create(std::array<uint32_t, 2>{1920, 1080}, std::array<uint32_t, 2>{0, 0}, std::string{ "Vector Testing" });
@@ -1247,12 +1393,73 @@ namespace BadgerSandbox
 	}
 }
 
+int pressDirection = 0;
+
+void KeyCallBack(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	switch (key)
+	{
+	  case GLFW_KEY_RIGHT: 
+		  if (action == GLFW_PRESS)
+		  {
+			  std::cout << "Pressed Right" << std::endl;
+			  pressDirection = 1;
+		  }
+		  break;
+	  case GLFW_KEY_LEFT:
+		  if (action == GLFW_PRESS)
+		  {
+			  std::cout << "Pressed Left" << std::endl;
+			  pressDirection = 2;
+		  }
+		  break;
+	  case GLFW_KEY_UP:
+		  if (action == GLFW_PRESS)
+		  {
+			  std::cout << "Pressed Up" << std::endl;
+			  pressDirection = 3;
+		  }
+		  break;
+	  case GLFW_KEY_DOWN:
+		  if (action == GLFW_PRESS)
+		  {
+			  std::cout << "Pressed Down" << std::endl;
+			  pressDirection = 4;
+		  }
+		  break;
+	  default: break;
+	}
+}
+
 int main()
 {
     std::cout << "Testing Vectors!" << std::endl;
     BadgerSandbox::VectorTestApplication vectorTest;
+	// TODO: This is a horrible hack, create a service that propagates window events
+	glfwSetKeyCallback((GLFWwindow*)vectorTest.window->GetNativeWindow(), KeyCallBack);
 	while (!vectorTest.window->ShouldWindowClose())
 	{
+		switch (pressDirection)
+		{
+		case 1:
+			pressDirection = 0;
+			vectorTest.RotateHorizontal(5.0f);
+		break;
+		case 2:
+			pressDirection = 0;
+			vectorTest.RotateHorizontal(-5.0f);
+			break;
+		case 3:
+			pressDirection = 0;
+			vectorTest.RotateVertical(5.0f);
+			break;
+		case 4:
+			pressDirection = 0;
+			vectorTest.RotateVertical(-5.0f);
+			break;
+		default: break;
+
+		}
 		vectorTest.Draw();
 	}
     return 0;
