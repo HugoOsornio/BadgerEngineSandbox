@@ -103,3 +103,8 @@ target_include_directories(VectorVulkanTest PUBLIC $<BUILD_INTERFACE:${CMAKE_CUR
 target_compile_definitions(VectorVulkanTest PUBLIC -DVECTOR_TEST_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/Sandbox/VectorVulkanTest/Content/")
 target_link_directories(VectorVulkanTest PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Matrix> $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Vector>)
 target_link_libraries(VectorVulkanTest ${Vulkan_LIBRARY} glfw RapidVulkan glm)
+
+add_executable(PhongShading Sandbox/PhongShading/PhongShading.cpp Sandbox/PhongShading/VulkanglTFModel.hpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
+target_include_directories(PhongShading PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window>)
+target_compile_definitions(PhongShading PUBLIC -DPHONG_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/Sandbox/PhongShading/Content/")
+target_link_libraries(PhongShading ${Vulkan_LIBRARY} glfw RapidVulkan tinygltf glm)

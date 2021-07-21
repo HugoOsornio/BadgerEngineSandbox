@@ -2,13 +2,41 @@
 #include <iostream>
 #include <array>
 #include "WindowFactory.hpp"
-#include "VectorVulkanTest.hpp"
+#include "PhongShading.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "VulkanglTFModel.hpp"
+
 namespace BadgerSandbox
 {
-	void VectorTestApplication::CreateInstance()
+	vkglTF::Model NyotenguModel;
+
+	void RenderNode(const vkglTF::Node& node, uint32_t cbIndex, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout)
+	{
+		if (node.mesh)
+		{
+			// Render mesh primitives
+			for (vkglTF::Primitive* primitive : node.mesh->primitives)
+			{
+				if (primitive->hasIndices)
+				{
+					vkCmdDrawIndexed(cmdBuffer, primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+				}
+				else
+				{
+					vkCmdDraw(cmdBuffer, primitive->vertexCount, 1, 0, 0);
+				}
+			}
+
+		};
+		for (auto child : node.children)
+		{
+			RenderNode(*child, cbIndex, cmdBuffer, pipelineLayout);
+		}
+	}
+
+	void PhongShading::CreateInstance()
 	{
 		VkApplicationInfo appInfo{};
 		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -71,12 +99,12 @@ namespace BadgerSandbox
 		instance.Reset(createInfo);
 	}
 
-	void VectorTestApplication::CreateSurface()
+	void PhongShading::CreateSurface()
 	{
 		window->GetVulkanSurfaceFromWindow(instance.Get(), &surface);
 	}
 
-	void VectorTestApplication::CreateLogicalDevice()
+	void PhongShading::CreateLogicalDevice()
 	{
 		uint32_t numDevices = 0;
 		if ((vkEnumeratePhysicalDevices(instance.Get(), &numDevices, nullptr) != VK_SUCCESS) ||
@@ -171,7 +199,7 @@ namespace BadgerSandbox
 		vkGetDeviceQueue(device.Get(), suitableQueueFamilyIndex, 0, &queue);
 	}
 
-	void VectorTestApplication::CreateSemaphores()
+	void PhongShading::CreateSemaphores()
 	{
 		VkSemaphoreCreateInfo semaphoreCreateInfo =
 		{
@@ -190,7 +218,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateFences()
+	void PhongShading::CreateFences()
 	{
 		VkFenceCreateInfo fenceCreateInfo =
 		{
@@ -210,7 +238,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateSwapchain()
+	void PhongShading::CreateSwapchain()
 	{
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
 		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(selectedPhysicalDevice, surface, &surfaceCapabilities) != VK_SUCCESS)
@@ -364,7 +392,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateRenderPass()
+	void PhongShading::CreateRenderPass()
 	{
 		std::array<VkAttachmentDescription, 2> attachmentDescriptions
 		{ {
@@ -449,7 +477,7 @@ namespace BadgerSandbox
 		renderPass.Reset(device.Get(), renderPassCreateInfo);
 	}
 
-	void VectorTestApplication::CreateSwapchainImageViews()
+	void PhongShading::CreateSwapchainImageViews()
 	{
 		uint32_t numberOfSwapchainImages = 0;
 		swapchain.GetSwapchainImagesKHR(&numberOfSwapchainImages, nullptr);
@@ -488,7 +516,7 @@ namespace BadgerSandbox
   Took this function from VulkanTutorial:
   https://vulkan-tutorial.com/
 */
-	uint32_t VectorTestApplication::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	uint32_t PhongShading::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 	{
 		VkPhysicalDeviceMemoryProperties memProperties;
 		vkGetPhysicalDeviceMemoryProperties(selectedPhysicalDevice, &memProperties);
@@ -508,7 +536,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void VectorTestApplication::CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+	void PhongShading::CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 	{
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -548,7 +576,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkImageView VectorTestApplication::CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+	VkImageView PhongShading::CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 	{
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -573,7 +601,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat VectorTestApplication::FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+	VkFormat PhongShading::FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 	{
 		for (VkFormat format : candidates)
 		{
@@ -596,7 +624,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat VectorTestApplication::FindDepthFormat()
+	VkFormat PhongShading::FindDepthFormat()
 	{
 		return FindSupportedFormat(
 			{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -609,14 +637,14 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void VectorTestApplication::CreateDepthImage()
+	void PhongShading::CreateDepthImage()
 	{
 		VkFormat depthFormat = FindDepthFormat();
 		CreateImageVulkanTutorial(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
 		depthImageView = CreateImageViewVulkanTutorial(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
-	void VectorTestApplication::CreateGraphicsCommandsBuffers()
+	void PhongShading::CreateGraphicsCommandsBuffers()
 	{
 		VkCommandPoolCreateInfo commandPoolCreateInfo =
 		{
@@ -663,7 +691,7 @@ namespace BadgerSandbox
 		framebuffers.resize(renderResourcesCount);
 	}
 
-	void VectorTestApplication::CreateDescriptorSetLayout()
+	void PhongShading::CreateDescriptorSetLayout()
 	{
 		VkDescriptorSetLayoutBinding layoutBinding =
 		{
@@ -686,7 +714,7 @@ namespace BadgerSandbox
 		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
 	}
 
-	void VectorTestApplication::CreateDescriptorPool()
+	void PhongShading::CreateDescriptorPool()
 	{
 		uint32_t meshCount = 0;
 		VkDescriptorPoolSize poolSizes = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, renderResourcesCount};
@@ -699,7 +727,7 @@ namespace BadgerSandbox
 		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCI, nullptr, &dPool));
 	}
 
-	void VectorTestApplication::AllocateDescriptorSet()
+	void PhongShading::AllocateDescriptorSet()
 	{
 		descriptorSets.resize(renderResourcesCount);
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
@@ -716,7 +744,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateBuffer(VkBuffer& buffer, VkDeviceMemory& memory, void** mappedMemory, VkBufferUsageFlags usage, VkDeviceSize size, VkMemoryPropertyFlags properties)
+	void PhongShading::CreateBuffer(VkBuffer& buffer, VkDeviceMemory& memory, void** mappedMemory, VkBufferUsageFlags usage, VkDeviceSize size, VkMemoryPropertyFlags properties)
 	{
 		VkBufferCreateInfo createInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 		createInfo.usage = usage;
@@ -746,21 +774,22 @@ namespace BadgerSandbox
 		vkMapMemory(device.Get(), memory, 0, allocationInfo.allocationSize, 0, mappedMemory);
 	}
 
-	void VectorTestApplication::CreateUniformBuffers()
+	void PhongShading::CreateUniformBuffers()
 	{
 	   // Matrix uniform buffers will contain:
 	   // A modelview matrix and the MVP matrix, each of them will have 16 floats.
 		matrixUniformBuffers.resize(renderResourcesCount);
+		size_t bufferSize = sizeof(glm::mat4) * 2;
 		for (auto& uBuffer : matrixUniformBuffers)
 		{
-			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(float) * 32, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 			uBuffer.decriptor.buffer = uBuffer.buffer;
 			uBuffer.decriptor.offset = 0;
-			uBuffer.decriptor.range = sizeof(float) * 32;
+			uBuffer.decriptor.range = bufferSize;
 		}
 	}
 
-	void VectorTestApplication::UpdateDescriptorSet()
+	void PhongShading::UpdateDescriptorSet()
 	{
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
@@ -777,7 +806,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateVertexBuffer()
+	void PhongShading::CreateVertexBuffer()
 	{
 		float vertexData[6][8] =
 		{
@@ -809,9 +838,9 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::CreateGraphicsPipeline()
+	void PhongShading::CreateGraphicsPipeline()
 	{
-		std::string vertexShaderPath(std::string(VECTOR_TEST_PROJECT_CONTENT) + "vert.spv");
+		std::string vertexShaderPath(std::string(PHONG_PROJECT_CONTENT) + "vert.spv");
 		std::ifstream vertexShaderIs(vertexShaderPath, std::ios::binary);
 
 		if (vertexShaderIs.fail())
@@ -837,7 +866,7 @@ namespace BadgerSandbox
 		vertexShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
 
 		// Rubric 3: The program reads data from a file
-		std::string fragmentShaderPath(std::string(VECTOR_TEST_PROJECT_CONTENT) + "frag.spv");
+		std::string fragmentShaderPath(std::string(PHONG_PROJECT_CONTENT) + "frag.spv");
 		std::ifstream fragmentShaderIs(fragmentShaderPath, std::ios::binary);
 
 		if (fragmentShaderIs.fail())
@@ -880,25 +909,31 @@ namespace BadgerSandbox
 		  }
 		};
 
-		VkVertexInputBindingDescription vertexInputBindingDescription =
+		std::vector<VkVertexInputBindingDescription> vertexInputBindingDescriptions =
 		{
+		  {
 			0,                                                          // uint32_t                                       binding
-			sizeof(float) * 8,                                          // uint32_t                                       stride
+			sizeof(vkglTF::Model::Vertex),                              // uint32_t                                       stride
 			VK_VERTEX_INPUT_RATE_VERTEX                                 // VkVertexInputRate                              inputRate
+		  }
 		};
 
-		std::array<VkVertexInputAttributeDescription, 2> vertexAttributeDescriptions =
-		{ {
-		  { 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0 },
-		  { 1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 4 }
-		} };
+		std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions =
+		{
+		  {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+		  {1, 0, VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 3},
+		  {2, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 6},
+		  {3, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 8},
+		  {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 10},
+		  {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 14}
+		};
 
 		VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
 		  VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,      // VkStructureType                                sType
 		  nullptr,                                                        // const void                                    *pNext
 		  0,                                                              // VkPipelineVertexInputStateCreateFlags          flags;
-		  1,                                                              // uint32_t                                       vertexBindingDescriptionCount
-		  &vertexInputBindingDescription,                                 // const VkVertexInputBindingDescription         *pVertexBindingDescriptions
+		  vertexInputBindingDescriptions.size(),                          // uint32_t                                       vertexBindingDescriptionCount
+		  vertexInputBindingDescriptions.data(),                          // const VkVertexInputBindingDescription         *pVertexBindingDescriptions
 		  vertexAttributeDescriptions.size(),                             // uint32_t                                       vertexAttributeDescriptionCount
 		  vertexAttributeDescriptions.data()                              // const VkVertexInputAttributeDescription       *pVertexAttributeDescriptions
 		};
@@ -909,7 +944,7 @@ namespace BadgerSandbox
 		  VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,  // VkStructureType                                sType
 		  nullptr,                                                      // const void                                    *pNext
 		  0,                                                            // VkPipelineInputAssemblyStateCreateFlags        flags
-		  VK_PRIMITIVE_TOPOLOGY_LINE_LIST,                              // VkPrimitiveTopology                            topology
+		  VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,                          // VkPrimitiveTopology                            topology
 		  VK_FALSE                                                      // VkBool32                                       primitiveRestartEnable
 		};
 
@@ -946,8 +981,8 @@ namespace BadgerSandbox
 		  0,                                                            // VkPipelineRasterizationStateCreateFlags        flags
 		  VK_FALSE,                                                     // VkBool32                                       depthClampEnable
 		  VK_FALSE,                                                     // VkBool32                                       rasterizerDiscardEnable
-		  VK_POLYGON_MODE_LINE,                                         // VkPolygonMode                                  polygonMode
-		  VK_CULL_MODE_NONE,                                            // VkCullModeFlags                                cullMode
+		  VK_POLYGON_MODE_FILL,                                         // VkPolygonMode                                  polygonMode
+		  VK_CULL_MODE_BACK_BIT,                                            // VkCullModeFlags                                cullMode
 		  VK_FRONT_FACE_COUNTER_CLOCKWISE,                              // VkFrontFace                                    frontFace
 		  VK_FALSE,                                                     // VkBool32                                       depthBiasEnable
 		  0.0f,                                                         // float                                          depthBiasConstantFactor
@@ -1051,7 +1086,7 @@ namespace BadgerSandbox
 		graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
 	}
 
-	void VectorTestApplication::CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
+	void PhongShading::CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
 	{
 		std::array<VkImageView, 2> attachments =
 		{
@@ -1074,7 +1109,7 @@ namespace BadgerSandbox
 		framebuffer.Reset(device.Get(), framebufferCreateInfo);
 	}
 
-	void VectorTestApplication::RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
+	void PhongShading::RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
 	{
 		VkCommandBufferBeginInfo commandBufferBeginInfo =
 		{
@@ -1117,33 +1152,19 @@ namespace BadgerSandbox
 		};
 
 		// Update UBOs
-		modelMatrix = Matrix4D(
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 1.0f
-		);
-		glmModelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
-
-		viewMatrix = LookAt();
-		glmViewMatrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-		projectionMatrix = Perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 100.0f, 0.1f);
-		glmProjectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
+		modelMatrix = glm::mat4(1.0f);
+		viewMatrix = glm::lookAt(eyeLocation, eyeDirection, up);
+		projectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
+		projectionMatrix[1][1] *= -1;
 
 		modelViewMatrix = viewMatrix * modelMatrix;
-		glmModelViewMatrix = glmViewMatrix * glmModelMatrix;
-		
 		MVPMatrix = projectionMatrix * viewMatrix * modelMatrix;
-		glmMVPMatrix = glmProjectionMatrix * glmViewMatrix * glmModelMatrix;
-
-		ExtractPlanesFromProjectionMatrix(MVPMatrix, leftPlane, rightPlane, bottomPlane, topPlane, nearPlane, farPlane);
 		
 		uniformBuffer currentUniformBuffer = matrixUniformBuffers[resourceIndex];
 		float* memory = (float*)currentUniformBuffer.mapped;
-		memcpy((void *)memory, modelViewMatrix.Data(), sizeof(float)*16);
-		memory += 16;
-		memcpy((void*)memory, MVPMatrix.Data(), sizeof(float) * 16);
+		memcpy((void*)memory, glm::value_ptr(modelViewMatrix) , sizeof(glm::mat4));
+		memory += sizeof(glm::mat4)/sizeof(float);
+		memcpy((void*)memory, glm::value_ptr(MVPMatrix), sizeof(glm::mat4));
 
 		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1172,12 +1193,21 @@ namespace BadgerSandbox
 
 		vkCmdSetViewport(commandBuffers[resourceIndex], 0, 1, &viewport);
 		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &scissor);
-
+		
 		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &vertexBuffers[resourceIndex].buffer, &offset);
 		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
 			&(descriptorSets[resourceIndex]), 0, nullptr);
-		vkCmdDraw(graphicsCommandBuffers[resourceIndex], 6, 1, 0, 0);
+		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &NyotenguModel.vertices.buffer, &offset);
+		if (NyotenguModel.indices.buffer != VK_NULL_HANDLE)
+		{
+			vkCmdBindIndexBuffer(commandBuffers[resourceIndex], NyotenguModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+		for (auto node : NyotenguModel.nodes)
+		{
+			RenderNode(*node, resourceIndex, commandBuffers[resourceIndex], pipelineLayout);
+		}
+		
+		
 
 		vkCmdEndRenderPass(commandBuffers[resourceIndex]);
 
@@ -1187,7 +1217,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void VectorTestApplication::Draw()
+	void PhongShading::Draw()
 	{
 		static size_t resourceIndex = 0;
 		uint32_t imageIndex;
@@ -1240,149 +1270,37 @@ namespace BadgerSandbox
 		resourceIndex = (resourceIndex + 1) % renderResourcesCount;
 	}
 
-	Matrix3D VectorTestApplication::Rotate(const float angle, const Vector3D axis)
-	{
-		Vector3D n = Normalize(axis);
-		float localCosine = cos(angle * 3.14159 / 180);
-		float localSine = sin(angle * 3.14159 / 180);
-
-		Matrix3D localMatrix(
-			( (n.x * n.x * (1 - localCosine)) + localCosine),
-			( (n.x * n.y * (1 - localCosine)) - (localSine * n.z) ),
-			( (n.x * n.z * (1 - localCosine)) + (localSine * n.y) ),
-			
-			( (n.x * n.y * (1 - localCosine)) + (localSine * n.z) ),
-			( (n.y * n.y * (1 - localCosine)) + localCosine),
-			( (n.y * n.z * (1 - localCosine)) - (localSine * n.x) ),
-
-			((n.x * n.z * (1 - localCosine)) - (localSine * n.y) ),
-			((n.y * n.z * (1 - localCosine)) + (localSine * n.x) ),
-			((n.z * n.z * (1 - localCosine)) + localCosine)
-		);
-
-		return localMatrix;
-	}
-
-	Matrix4D VectorTestApplication::LookAt()
-	{
-		Vector3D forward = Normalize(eyeDirection - eyeLocation);
-		Vector3D right = Normalize(Cross(forward, up));
-
-		Matrix4D lookAtRotation;
-
-		// Build a transformation matrix with the inverse of the rotation matrix on the camera.
-		// As rotation matrices are orthogonal, you can simply use the transpose of the camera basis vectors.
-		lookAtRotation(0, 0) = right.x;
-		lookAtRotation(0, 1) = right.y;
-		lookAtRotation(0, 2) = right.z;
-
-		lookAtRotation(1, 0) = up.x;
-		lookAtRotation(1, 1) = up.y;
-		lookAtRotation(1, 2) = up.z;
-
-		lookAtRotation(2, 0) = -forward.x;
-		lookAtRotation(2, 1) = -forward.y;
-		lookAtRotation(2, 2) = -forward.z;
-
-		Matrix4D lookAtTranslation;
-		lookAtTranslation(0, 3) = -eyeLocation.x;
-		lookAtTranslation(1, 3) = -eyeLocation.y;
-		lookAtTranslation(2, 3) = -eyeLocation.z;
-
-		Matrix4D finalLookAt;
-		finalLookAt = lookAtRotation * lookAtTranslation;
-/*
-		lookAtRotation(0, 3) = -Dot(right, eyeLocation);
-		lookAtRotation(1, 3) = -Dot(up, eyeLocation);
-		lookAtRotation(2, 3) = Dot(forward, eyeLocation);
-*/
-/*
-		lookAtRotation(0, 3) = right.x * (-eyeLocation.x) + up.x * (-eyeLocation.y) + forward.x * (-eyeLocation.z);
-		lookAtRotation(1, 3) = right.y * (-eyeLocation.x) + up.y * (-eyeLocation.y) + forward.y * (-eyeLocation.z);
-		lookAtRotation(2, 3) = right.z * (-eyeLocation.x) + up.z * (-eyeLocation.y) + forward.z * (-eyeLocation.z);
-*/
-
-		return finalLookAt;
-	}
-
-	Matrix4D VectorTestApplication::Perspective(float r, float l, float t, float b, float f, float n)
-	{
-		return Matrix4D(
-			(2*n) /(r - l), 0.0f, (r + l)/(r - l), 0.0f,
-			0.0f, (2 * n) / (t - b), (t + b) / (t - b), 0.0f,
-			0.0f, 0.0f, - 0.5f * ((f + n)/(f -n)), -1.0f*((n*f)/(f - n)),
-			0.0f, 0.0f, -1.0f, 0.0f
-		);
-	}
-
-	Matrix4D VectorTestApplication::Perspective(float fov, float aspect, float zFar, float zNear)
-	{
-		float g = 1.0f / tan(fov / 2.0f);
-		float k = zFar / (2*(zFar - zNear));
-
-		Matrix4D result (
-		  g / aspect, 0.0f, 0.0f, 0.0f,
-          0.0f, -g, 0.0f, 0.0f,
-		  0.0f, 0.0f, -k, -zNear * k,
-          0.0f, 0.0f, -1.0f, 0.0f
-	  	);
-		
-		return result;
-	}
-
-	void VectorTestApplication::RotateHorizontal(float angle)
+	void PhongShading::RotateHorizontal(float angle)
 	{
 		//Rotation left means rotating around my up vector
-		Vector3D forward = Normalize(eyeLocation - eyeDirection);
-		Vector3D left = Cross(Normalize(up), forward);
-		Vector3D actualUp = Cross(forward, left);
-		Matrix3D rotation = Rotate(angle, actualUp);
+		glm::vec3 forward = glm::normalize(eyeLocation - eyeDirection);
+		glm::vec3 left = glm::cross(glm::normalize(up), forward);
+		glm::vec3 actualUp = glm::cross(forward, left);
+		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, actualUp);
 		eyeLocation = rotation * eyeLocation;
 		//Now we need to recalculate up
-		forward = Normalize(eyeLocation - eyeDirection);
-		left = Cross(Normalize(up), forward);
-		actualUp = Cross(forward, left);
+		forward = glm::normalize(eyeLocation - eyeDirection);
+		left = glm::cross(glm::normalize(up), forward);
+		actualUp = glm::cross(forward, left);
 		up = actualUp;
 	}
 
-	void VectorTestApplication::RotateVertical(float angle)
+	void PhongShading::RotateVertical(float angle)
 	{
 		//Rotation up, means rotation around my left or right vector
 		// I need to define where left is, based on the current eye position:
-		Vector3D forward = Normalize(eyeLocation - eyeDirection);
-		Vector3D left = Cross(Normalize(up), forward);
-		Matrix3D rotation = Rotate(angle, left);
+		glm::vec3 forward = glm::normalize(eyeLocation - eyeDirection);
+		glm::vec3 left = glm::cross(glm::normalize(up), forward);
+		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, left);
 		eyeLocation = rotation * eyeLocation;
 		//Now we need to recalculate up
-		forward = Normalize(eyeLocation - eyeDirection);
-		left = Cross(Normalize(up), forward);
-		Vector3D actualUp = Cross(forward, left);
+		forward = glm::normalize(eyeLocation - eyeDirection);
+		left = glm::cross(glm::normalize(up), forward);
+		glm::vec3 actualUp = glm::cross(forward, left);
 		up = actualUp;
 	}
 
-	void VectorTestApplication::ExtractPlanesFromProjectionMatrix(const Matrix4D& mvpMat, std::array<float, 4>& left, std::array<float, 4>& right, std::array<float, 4>& bottom, std::array<float, 4>& top, std::array<float, 4>& zNear, std::array<float, 4>& zFar)
-	{
-		left[0] = mvpMat(3, 0) + mvpMat(0, 0);
-		left[1] = mvpMat(3, 1) + mvpMat(0, 1);
-		left[2] = mvpMat(3, 2) + mvpMat(0, 2);
-		left[3] = mvpMat(3, 3) + mvpMat(0, 3);
-		/*
-		for (int i = 4; i--; ) 
-			left[i] = mvpMat(3,i) + mvpMat(0,i);
-		for (int i = 4; i--; ) 
-			right[i] = mvpMat(3,i) - mvpMat(0,i);
-		for (int i = 4; i--; ) 
-			bottom[i] = mvpMat[i][3] + mvpMat[i][1];
-		for (int i = 4; i--; ) 
-			top[i] = mvpMat[i][3] - mvpMat[i][1];
-		for (int i = 4; i--; ) 
-			zNear[i] = mvpMat[i][3] + mvpMat[i][2];
-		for (int i = 4; i--; ) 
-			zFar[i] = mvpMat[i][3] - mvpMat[i][2];
-			*/
-	}
-
-	VectorTestApplication::VectorTestApplication()
+	PhongShading::PhongShading()
 		: renderResourcesCount(3)
 		, suitablePhysicalDeviceIndex(0xFFFFFFFF)
 		, suitableQueueFamilyIndex(0xFFFFFFFF)
@@ -1426,6 +1344,8 @@ namespace BadgerSandbox
 			UpdateDescriptorSet();
 			CreateVertexBuffer();
 			CreateGraphicsPipeline();
+			std::string modelPath(std::string(PHONG_PROJECT_CONTENT) + "Nyotengu.gltf");
+			NyotenguModel.loadFromFile(modelPath, selectedPhysicalDevice, device.Get(), queue, graphicsCommandPool.Get(), 1.0f);
 		}
 		catch (std::exception& e)
 		{
@@ -1433,7 +1353,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	VectorTestApplication::~VectorTestApplication()
+	PhongShading::~PhongShading()
 	{
 	}
 }
@@ -1478,36 +1398,34 @@ void KeyCallBack(GLFWwindow* window, int key, int scancode, int action, int mods
 
 int main()
 {
-    std::cout << "Testing Vectors!" << std::endl;
-    BadgerSandbox::VectorTestApplication vectorTest;
+    std::cout << "Simple Phong Shading!" << std::endl;
+    BadgerSandbox::PhongShading phongShading;
 	// TODO: This is a horrible hack, create a service that propagates window events
-	glfwSetKeyCallback((GLFWwindow*)vectorTest.window->GetNativeWindow(), KeyCallBack);
-	while (!vectorTest.window->ShouldWindowClose())
+	glfwSetKeyCallback((GLFWwindow*)phongShading.window->GetNativeWindow(), KeyCallBack);
+	while (!phongShading.window->ShouldWindowClose())
 	{
 		switch (pressDirection)
 		{
 		case 1:
 			pressDirection = 0;
-			vectorTest.RotateHorizontal(5.0f);
+			phongShading.RotateHorizontal(glm::radians(5.0f));
 		break;
 		case 2:
 			pressDirection = 0;
-			vectorTest.RotateHorizontal(-5.0f);
+			phongShading.RotateHorizontal(glm::radians(-5.0f));
 			break;
 		case 3:
 			pressDirection = 0;
-			vectorTest.RotateVertical(5.0f);
+			phongShading.RotateVertical(glm::radians(5.0f));
 			break;
 		case 4:
 			pressDirection = 0;
-			vectorTest.RotateVertical(-5.0f);
+			phongShading.RotateVertical(glm::radians(-5.0f));
 			break;
 		default: break;
 
 		}
-		vectorTest.Draw();
+		phongShading.Draw();
 	}
     return 0;
 }
-
-

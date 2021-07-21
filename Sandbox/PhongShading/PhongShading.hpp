@@ -18,10 +18,7 @@
 #include <RapidVulkan/CommandBuffers.hpp>
 #include "IWindow.hpp"
 
-#include "Matrix4D.hpp"
-#include "Matrix3D.hpp"
-
-#define GLM_DEPTH_ZERO_TO_ONE   1
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -44,7 +41,7 @@ namespace BadgerSandbox
     };
 
     // TO DO: Create a base application that creates a swapchain with a Color and Depth attachment
-	class VectorTestApplication
+	class PhongShading
 	{
 	private:
 		std::vector<std::string> presentationExtensions;
@@ -98,28 +95,20 @@ namespace BadgerSandbox
 
         std::vector<uniformBuffer> matrixUniformBuffers;
 
-        Matrix4D modelMatrix;
-        glm::mat4 glmModelMatrix;
+        glm::mat4 modelMatrix;
+        glm::mat4 viewMatrix;
+        glm::mat4 projectionMatrix;
+        glm::mat4 modelViewMatrix;
 
-        Matrix4D viewMatrix;
-        glm::mat4 glmViewMatrix;
+        glm::mat4 MVPMatrix;
 
-        Matrix4D projectionMatrix;
-        glm::mat4 glmProjectionMatrix;
-        
-        Matrix4D modelViewMatrix;
-        glm::mat4 glmModelViewMatrix;
+        glm::vec3 up;
+        glm::vec3 eyeLocation;
+        glm::vec3 eyeDirection;
 
-        Matrix4D MVPMatrix;
-        glm::mat4 glmMVPMatrix;
-
-        Vector3D up;
-        Vector3D eyeLocation;
-        Vector3D eyeDirection;
-
-        Vector3D initialUp;
-        Vector3D initialEyeLocation;
-        Vector3D initialEyeDirection;
+        glm::vec3 initialUp;
+        glm::vec3 initialEyeLocation;
+        glm::vec3 initialEyeDirection;
 
         std::array<float, 4> leftPlane;
         std::array<float, 4> rightPlane;
@@ -156,15 +145,10 @@ namespace BadgerSandbox
         void CreateUniformBuffers();
         void CreateVertexBuffer();
         void UpdateDescriptorSet();
-        Matrix3D Rotate(const float angle, const Vector3D axis);
-        Matrix4D LookAt();
-        Matrix4D Perspective(float r, float l, float t, float b, float f, float n);
-        Matrix4D Perspective(float fov, float aspect, float far, float near);
-        void ExtractPlanesFromProjectionMatrix(const Matrix4D& mvpMat, std::array<float, 4>& left, std::array<float, 4>& right, std::array<float, 4>& bottom, std::array<float, 4>& top, std::array<float, 4>& near, std::array<float, 4>& far);
 	public:
         std::shared_ptr<IWindow> window;
-        VectorTestApplication();
-		~VectorTestApplication();
+        PhongShading();
+		~PhongShading();
         void Draw();
         void RotateHorizontal(float angle);
         void RotateVertical(float angle);
