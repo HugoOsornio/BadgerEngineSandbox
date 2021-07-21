@@ -1190,7 +1190,7 @@ namespace BadgerSandbox
 		memory += sizeof(glm::mat4)/sizeof(float);
 		memcpy((void*)memory, glm::value_ptr(MVPMatrix), sizeof(glm::mat4));
 
-		glm::vec4 lightPosition = viewMatrix * glm::vec4(0.0f, 2.0f, 2.0f, 1.0f);
+		glm::vec4 lightPosition = viewMatrix * glm::vec4(0.0f, 2.0f, 0.0f, 1.0f);
 		glm::vec4 lightIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 		uniformBuffer currentLightUniformBuffer = lightUniformBuffer[resourceIndex];
 		memory = (float*)currentLightUniformBuffer.mapped;
@@ -1310,11 +1310,6 @@ namespace BadgerSandbox
 		glm::vec3 actualUp = glm::cross(forward, left);
 		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, actualUp);
 		eyeLocation = rotation * eyeLocation;
-		//Now we need to recalculate up
-		forward = glm::normalize(eyeLocation - eyeDirection);
-		left = glm::cross(glm::normalize(up), forward);
-		actualUp = glm::cross(forward, left);
-		up = actualUp;
 	}
 
 	void PhongShading::RotateVertical(float angle)
@@ -1325,11 +1320,12 @@ namespace BadgerSandbox
 		glm::vec3 left = glm::cross(glm::normalize(up), forward);
 		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, left);
 		eyeLocation = rotation * eyeLocation;
-		//Now we need to recalculate up
+		/*
 		forward = glm::normalize(eyeLocation - eyeDirection);
 		left = glm::cross(glm::normalize(up), forward);
 		glm::vec3 actualUp = glm::cross(forward, left);
 		up = actualUp;
+		*/
 	}
 
 	PhongShading::PhongShading()
@@ -1337,7 +1333,7 @@ namespace BadgerSandbox
 		, suitablePhysicalDeviceIndex(0xFFFFFFFF)
 		, suitableQueueFamilyIndex(0xFFFFFFFF)
 		, up(0.0f, 1.0f, 0.0f)
-        , eyeLocation(0.0f, 0.0f, 3.0f)
+        , eyeLocation(0.0f, 2.0f, 3.0f)
 	    , eyeDirection(0.0f, 0.0f, 0.0f)
 	    , initialUp(0.0f, 1.0f, 0.0f)
 	    , initialEyeLocation(0.0f, 0.0f, 3.0f)
