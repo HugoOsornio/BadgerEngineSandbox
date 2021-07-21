@@ -94,12 +94,15 @@ namespace BadgerSandbox
         VkPipelineLayout pipelineLayout;
 
         std::vector<uniformBuffer> matrixUniformBuffers;
+        std::vector<uniformBuffer> lightUniformBuffer;
 
         glm::mat4 modelMatrix;
         glm::mat4 viewMatrix;
         glm::mat4 projectionMatrix;
+        
+        //Mats actually sent to the shader
+        glm::mat4 normalMatrix;
         glm::mat4 modelViewMatrix;
-
         glm::mat4 MVPMatrix;
 
         glm::vec3 up;

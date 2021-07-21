@@ -693,22 +693,25 @@ namespace BadgerSandbox
 
 	void PhongShading::CreateDescriptorSetLayout()
 	{
-		VkDescriptorSetLayoutBinding layoutBinding =
-		{
-			0,                                                    // uint32_t                             binding
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,                    // VkDescriptorType                     descriptorType
-			1,                                                    // uint32_t                             descriptorCount
-			VK_SHADER_STAGE_VERTEX_BIT,                         // VkShaderStageFlags                   stageFlags
-			nullptr                                               // const VkSampler                     *pImmutableSamplers
-		};
+		std::array<VkDescriptorSetLayoutBinding, 2>  layoutBindings{};
+		layoutBindings[0].binding = 0;
+		layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		layoutBindings[0].descriptorCount = 1;
+		layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+		layoutBindings[1].binding = 1;
+		layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		layoutBindings[1].descriptorCount = 1;
+		layoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
 
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo =
 		{
 		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,  // VkStructureType                      sType
 		  nullptr,                                              // const void                          *pNext
 		  0,                                                    // VkDescriptorSetLayoutCreateFlags     flags
-		  1,                                                    // uint32_t                             bindingCount
-		  &layoutBinding                                       // const VkDescriptorSetLayoutBinding  *pBindings
+		  layoutBindings.size(),                                                    // uint32_t                             bindingCount
+		  layoutBindings.data()                                       // const VkDescriptorSetLayoutBinding  *pBindings
 		};
 
 		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
@@ -717,7 +720,7 @@ namespace BadgerSandbox
 	void PhongShading::CreateDescriptorPool()
 	{
 		uint32_t meshCount = 0;
-		VkDescriptorPoolSize poolSizes = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, renderResourcesCount};
+		VkDescriptorPoolSize poolSizes = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, renderResourcesCount * 2};
 		VkDescriptorPoolCreateInfo descriptorPoolCI{};
 		descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		descriptorPoolCI.poolSizeCount = 1;
@@ -736,7 +739,7 @@ namespace BadgerSandbox
 		  nullptr,                                        // const void                    *pNext
 		  dPool,                                          // VkDescriptorPool               descriptorPool
 		  1,                                              // uint32_t                       descriptorSetCount
-		  & descriptorSetLayout                           // const VkDescriptorSetLayout   *pSetLayouts
+		  &descriptorSetLayout                            // const VkDescriptorSetLayout   *pSetLayouts
 		};
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
@@ -777,9 +780,8 @@ namespace BadgerSandbox
 	void PhongShading::CreateUniformBuffers()
 	{
 	   // Matrix uniform buffers will contain:
-	   // A modelview matrix and the MVP matrix, each of them will have 16 floats.
 		matrixUniformBuffers.resize(renderResourcesCount);
-		size_t bufferSize = sizeof(glm::mat4) * 2;
+		size_t bufferSize = sizeof(glm::mat4) * 3;
 		for (auto& uBuffer : matrixUniformBuffers)
 		{
 			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -787,22 +789,40 @@ namespace BadgerSandbox
 			uBuffer.decriptor.offset = 0;
 			uBuffer.decriptor.range = bufferSize;
 		}
+		
+		lightUniformBuffer.resize(renderResourcesCount);
+		bufferSize = sizeof(glm::vec4) * 2;
+		for (auto& uBuffer : lightUniformBuffer)
+		{
+			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			uBuffer.decriptor.buffer = uBuffer.buffer;
+			uBuffer.decriptor.offset = 0;
+			uBuffer.decriptor.range = bufferSize;
+		}
+
 	}
 
 	void PhongShading::UpdateDescriptorSet()
 	{
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-			VkWriteDescriptorSet writeDescriptorSet = {};
+			std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
-			writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			writeDescriptorSet.descriptorCount = 1;
-			writeDescriptorSet.dstSet = descriptorSets[i];
-			writeDescriptorSet.dstBinding = 0;
-			writeDescriptorSet.pBufferInfo = &(matrixUniformBuffers[i].decriptor);
+			writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[0].dstSet = descriptorSets[i];
+			writeDescriptorSets[0].dstBinding = 0;
+			writeDescriptorSets[0].descriptorCount = 1;
+			writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSets[0].pBufferInfo = &(matrixUniformBuffers[i].decriptor);
 
-			vkUpdateDescriptorSets(device.Get(), 1, &writeDescriptorSet, 0, nullptr);
+			writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[1].dstSet = descriptorSets[i];
+			writeDescriptorSets[1].dstBinding = 1;
+			writeDescriptorSets[1].descriptorCount = 1;
+			writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSets[1].pBufferInfo = &(lightUniformBuffer[i].decriptor);
+
+			vkUpdateDescriptorSets(device.Get(), writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
 		}
 	}
 
@@ -1157,14 +1177,26 @@ namespace BadgerSandbox
 		projectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
 		projectionMatrix[1][1] *= -1;
 
+		
 		modelViewMatrix = viewMatrix * modelMatrix;
 		MVPMatrix = projectionMatrix * viewMatrix * modelMatrix;
-		
+		normalMatrix = modelViewMatrix;
+
 		uniformBuffer currentUniformBuffer = matrixUniformBuffers[resourceIndex];
 		float* memory = (float*)currentUniformBuffer.mapped;
+		memcpy((void*)memory, glm::value_ptr(normalMatrix), sizeof(glm::mat4));
+		memory += sizeof(glm::mat4) / sizeof(float);
 		memcpy((void*)memory, glm::value_ptr(modelViewMatrix) , sizeof(glm::mat4));
 		memory += sizeof(glm::mat4)/sizeof(float);
 		memcpy((void*)memory, glm::value_ptr(MVPMatrix), sizeof(glm::mat4));
+
+		glm::vec4 lightPosition = viewMatrix * glm::vec4(0.0f, 2.0f, 2.0f, 1.0f);
+		glm::vec4 lightIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		uniformBuffer currentLightUniformBuffer = lightUniformBuffer[resourceIndex];
+		memory = (float*)currentLightUniformBuffer.mapped;
+		memcpy((void*)memory, glm::value_ptr(lightPosition), sizeof(glm::mat4));
+		memory += sizeof(glm::vec4) / sizeof(float);
+		memcpy((void*)memory, glm::value_ptr(lightIntensity), sizeof(glm::mat4));
 
 		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
