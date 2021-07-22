@@ -31,6 +31,6 @@ void main()
 {
 	normal =  normalize(mat3(g_mats.normal) * inNormal);
     fragmentPosition = vec3(g_mats.modelView * vec4(inPosition, 1.0));
-	fragmentPositionLightSpace = g_mats.lightSpace * vec4(inPosition, 1.0);
+	fragmentPositionLightSpace = biasMat * g_mats.lightSpace * vec4(inPosition, 1.0);
 	gl_Position = g_mats.MVP * vec4(inPosition, 1.0);
 }

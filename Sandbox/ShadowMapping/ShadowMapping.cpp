@@ -13,6 +13,12 @@ namespace BadgerSandbox
 	vkglTF::Model NyotenguModel;
 	vkglTF::Model NyotenguModel_Ground;
 
+	// Depth bias (and slope) are used to avoid shadowing artifacts
+// Constant depth bias factor (always applied)
+	float depthBiasConstant = 2.0f;
+	// Slope depth bias factor, applied depending on polygon's slope
+	float depthBiasSlope = 3.5f;
+
 	void RenderNode(const vkglTF::Node& node, uint32_t cbIndex, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout)
 	{
 		if (node.mesh)
@@ -1392,10 +1398,11 @@ namespace BadgerSandbox
 		  nullptr                                                       // const VkRect2D                                *pScissors
 		};
 
-		std::array<VkDynamicState, 2> dynamicStates =
+		std::array<VkDynamicState, 3> dynamicStates =
 		{
 		  VK_DYNAMIC_STATE_VIEWPORT,
 		  VK_DYNAMIC_STATE_SCISSOR,
+		  VK_DYNAMIC_STATE_DEPTH_BIAS,
 		};
 
 		VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo =
@@ -1415,9 +1422,9 @@ namespace BadgerSandbox
 		  VK_FALSE,                                                     // VkBool32                                       depthClampEnable
 		  VK_FALSE,                                                     // VkBool32                                       rasterizerDiscardEnable
 		  VK_POLYGON_MODE_FILL,                                         // VkPolygonMode                                  polygonMode
-		  VK_CULL_MODE_FRONT_BIT,                                            // VkCullModeFlags                                cullMode
+		  VK_CULL_MODE_BACK_BIT,                                        // VkCullModeFlags                                cullMode
 		  VK_FRONT_FACE_COUNTER_CLOCKWISE,                              // VkFrontFace                                    frontFace
-		  VK_FALSE,                                                     // VkBool32                                       depthBiasEnable
+		  VK_TRUE,                                                      // VkBool32                                       depthBiasEnable
 		  0.0f,                                                         // float                                          depthBiasConstantFactor
 		  0.0f,                                                         // float                                          depthBiasClamp
 		  0.0f,                                                         // float                                          depthBiasSlopeFactor
@@ -1453,19 +1460,6 @@ namespace BadgerSandbox
 			1.0f                                                                       // maxDepthBounds
 		};																			   
 
-		VkPipelineColorBlendAttachmentState colorBlendAttachmentState =
-		{
-		  VK_FALSE,                                                     // VkBool32                                       blendEnable
-		  VK_BLEND_FACTOR_ONE,                                          // VkBlendFactor                                  srcColorBlendFactor
-		  VK_BLEND_FACTOR_ZERO,                                         // VkBlendFactor                                  dstColorBlendFactor
-		  VK_BLEND_OP_ADD,                                              // VkBlendOp                                      colorBlendOp
-		  VK_BLEND_FACTOR_ONE,                                          // VkBlendFactor                                  srcAlphaBlendFactor
-		  VK_BLEND_FACTOR_ZERO,                                         // VkBlendFactor                                  dstAlphaBlendFactor
-		  VK_BLEND_OP_ADD,                                              // VkBlendOp                                      alphaBlendOp
-		  VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |         // VkColorComponentFlags                          colorWriteMask
-		  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-		};
-
 		VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo =
 		{
 		  VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,     // VkStructureType                                sType
@@ -1473,8 +1467,8 @@ namespace BadgerSandbox
 		  0,                                                            // VkPipelineColorBlendStateCreateFlags           flags
 		  VK_FALSE,                                                     // VkBool32                                       logicOpEnable
 		  VK_LOGIC_OP_COPY,                                             // VkLogicOp                                      logicOp
-		  1,                                                            // uint32_t                                       attachmentCount
-		  &colorBlendAttachmentState,                                  // const VkPipelineColorBlendAttachmentState     *pAttachments
+		  0,                                                            // uint32_t                                       attachmentCount
+		  nullptr,                                                      // const VkPipelineColorBlendAttachmentState     *pAttachments
 		  { 0.0f, 0.0f, 0.0f, 0.0f }                                    // float                                          blendConstants[4]
 		};
 
@@ -1602,8 +1596,8 @@ namespace BadgerSandbox
 
 		// Update UBOs
 		shadowPass.modelMatrix = glm::mat4(1.0f);
-		shadowPass.viewMatrix = glm::lookAt(/*shadowPass.eyeLocation*/glm::vec3(0.0f, 1.75f, 2.0f), shadowPass.eyeDirection, shadowPass.up);
-		shadowPass.projectionMatrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 50.0f);
+		shadowPass.viewMatrix = glm::lookAt(/*shadowPass.eyeLocation*/glm::vec3(2.0f, 4.75f, 2.0f), shadowPass.eyeDirection, shadowPass.up);
+		shadowPass.projectionMatrix = glm::perspective(glm::radians(45.0f), 1.0f, 1.0f, 96.0f);
 		shadowPass.projectionMatrix[1][1] *= -1;
 
 		shadowPass.modelViewMatrix = shadowPass.viewMatrix * shadowPass.modelMatrix;
@@ -1645,6 +1639,11 @@ namespace BadgerSandbox
 
 		vkCmdSetViewport(commandBuffers[resourceIndex], 0, 1, &shadowViewport);
 		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &shadowScissor);
+		vkCmdSetDepthBias(
+			commandBuffers[resourceIndex],
+			depthBiasConstant,
+			0.0f,
+			depthBiasSlope);
 
 		VkDeviceSize offset = 0;
 		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPass.pipelineLayout, 0, 1,
@@ -1725,7 +1724,7 @@ namespace BadgerSandbox
 		memory += sizeof(glm::mat4) / sizeof(float);
 		memcpy((void*)memory, glm::value_ptr(shadowPass.MVPMatrix), sizeof(glm::mat4));
 
-		glm::vec4 lightPosition = finalPass.viewMatrix * glm::vec4(0.0f, 1.75f, 2.0f, 1.0f);
+		glm::vec4 lightPosition = finalPass.viewMatrix * glm::vec4(2.0f, 1.75f, 2.0f, 1.0f);
 		glm::vec4 lightIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 		uniformBuffer currentLightUniformBuffer = finalPass.lightUniformBuffer[resourceIndex];
 		memory = (float*)currentLightUniformBuffer.mapped;
@@ -1888,11 +1887,11 @@ namespace BadgerSandbox
 		}
 
 		finalPass.up = glm::vec3(0.0f, 1.0f, 0.0f);
-		finalPass.eyeLocation = glm::vec3(0.0f, 2.5f, 2.0f);
+		finalPass.eyeLocation = glm::vec3(0.0f, 2.5f, 1.0f);
 		finalPass.eyeDirection = glm::vec3(0.0f, 0.0f, 0.0f);
 		
 		shadowPass.up = finalPass.up;
-		shadowPass.eyeLocation = glm::vec3(0.0f, 2.5f, 2.0f);
+		shadowPass.eyeLocation = glm::vec3(0.0f, 2.5f, 1.0f);
 		shadowPass.eyeDirection = glm::vec3(0.0f, 0.0f, 0.0f);
 
 		finalPass.initialUp = glm::vec3(0.0f, 1.0f, 0.0f);
