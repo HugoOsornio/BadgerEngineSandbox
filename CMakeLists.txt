@@ -108,3 +108,8 @@ add_executable(PhongShading Sandbox/PhongShading/PhongShading.cpp Sandbox/PhongS
 target_include_directories(PhongShading PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window>)
 target_compile_definitions(PhongShading PUBLIC -DPHONG_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/Sandbox/PhongShading/Content/")
 target_link_libraries(PhongShading ${Vulkan_LIBRARY} glfw RapidVulkan tinygltf glm)
+
+add_executable(ShadowMapping Sandbox/ShadowMapping/ShadowMapping.cpp Sandbox/ShadowMapping/VulkanglTFModel.hpp Sandbox/Window/WindowFactory.cpp Sandbox/Window/WindowWin32.cpp)
+target_include_directories(ShadowMapping PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Sandbox/Window>)
+target_compile_definitions(ShadowMapping PUBLIC -DSHADOW_MAPPING_PROJECT_CONTENT="${CMAKE_SOURCE_DIR}/Sandbox/ShadowMapping/Content/")
+target_link_libraries(ShadowMapping ${Vulkan_LIBRARY} glfw RapidVulkan tinygltf glm)

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <array>
 #include "WindowFactory.hpp"
-#include "PhongShading.hpp"
+#include "ShadowMapping.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -11,6 +11,7 @@
 namespace BadgerSandbox
 {
 	vkglTF::Model NyotenguModel;
+	vkglTF::Model NyotenguModel_Ground;
 
 	void RenderNode(const vkglTF::Node& node, uint32_t cbIndex, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout)
 	{
@@ -36,7 +37,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void PhongShading::CreateInstance()
+	void ShadowMapping::CreateInstance()
 	{
 		VkApplicationInfo appInfo{};
 		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -99,12 +100,12 @@ namespace BadgerSandbox
 		instance.Reset(createInfo);
 	}
 
-	void PhongShading::CreateSurface()
+	void ShadowMapping::CreateSurface()
 	{
 		window->GetVulkanSurfaceFromWindow(instance.Get(), &surface);
 	}
 
-	void PhongShading::CreateLogicalDevice()
+	void ShadowMapping::CreateLogicalDevice()
 	{
 		uint32_t numDevices = 0;
 		if ((vkEnumeratePhysicalDevices(instance.Get(), &numDevices, nullptr) != VK_SUCCESS) ||
@@ -199,7 +200,7 @@ namespace BadgerSandbox
 		vkGetDeviceQueue(device.Get(), suitableQueueFamilyIndex, 0, &queue);
 	}
 
-	void PhongShading::CreateSemaphores()
+	void ShadowMapping::CreateSemaphores()
 	{
 		VkSemaphoreCreateInfo semaphoreCreateInfo =
 		{
@@ -218,7 +219,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void PhongShading::CreateFences()
+	void ShadowMapping::CreateFences()
 	{
 		VkFenceCreateInfo fenceCreateInfo =
 		{
@@ -238,7 +239,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void PhongShading::CreateSwapchain()
+	void ShadowMapping::CreateSwapchain()
 	{
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
 		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(selectedPhysicalDevice, surface, &surfaceCapabilities) != VK_SUCCESS)
@@ -392,7 +393,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	void PhongShading::CreateRenderPass()
+	void ShadowMapping::CreateRenderPass()
 	{
 		std::array<VkAttachmentDescription, 2> attachmentDescriptions
 		{ {
@@ -477,7 +478,87 @@ namespace BadgerSandbox
 		renderPass.Reset(device.Get(), renderPassCreateInfo);
 	}
 
-	void PhongShading::CreateSwapchainImageViews()
+	void ShadowMapping::CreateShadowRenderPass()
+	{
+		VkFormat depthFormat = FindDepthFormat();
+		
+		std::vector<VkAttachmentDescription> attachmentDescriptions =
+		{
+	      {
+		    0,                                                // VkAttachmentDescriptionFlags     flags
+			depthFormat,                                      // VkFormat                         format
+		    VK_SAMPLE_COUNT_1_BIT,                            // VkSampleCountFlagBits            samples
+		    VK_ATTACHMENT_LOAD_OP_CLEAR,                      // VkAttachmentLoadOp               loadOp
+		    VK_ATTACHMENT_STORE_OP_STORE,                     // VkAttachmentStoreOp              storeOp
+		    VK_ATTACHMENT_LOAD_OP_DONT_CARE,                  // VkAttachmentLoadOp               stencilLoadOp
+		    VK_ATTACHMENT_STORE_OP_DONT_CARE,                 // VkAttachmentStoreOp              stencilStoreOp
+		    VK_IMAGE_LAYOUT_UNDEFINED,                        // VkImageLayout                    initialLayout
+		    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL   // VkImageLayout                    finalLayout
+	      }
+		};
+
+		VkAttachmentReference attachmentReferences =
+		{
+		  0,                                                // uint32_t                             attachment
+		  VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL  // VkImageLayout                        layout
+		};
+
+		std::array<VkSubpassDescription, 1> subpassesDescriptions
+		{
+		  {
+			0,                                          // VkSubpassDescriptionFlags      flags
+			VK_PIPELINE_BIND_POINT_GRAPHICS,            // VkPipelineBindPoint            pipelineBindPoint
+			0,                                          // uint32_t                       inputAttachmentCount
+			nullptr,                                    // const VkAttachmentReference   *pInputAttachments
+			0,                                          // uint32_t                       colorAttachmentCount
+			nullptr,                                    // const VkAttachmentReference   *pColorAttachments
+			nullptr,                                    // const VkAttachmentReference   *pResolveAttachments
+			&attachmentReferences,                      // const VkAttachmentReference   *pDepthStencilAttachment
+			0,                                          // uint32_t                       preserveAttachmentCount
+			nullptr                                     // const uint32_t*                pPreserveAttachments
+		  }
+		};
+
+		std::vector<VkSubpassDependency> shadowMapSubpassDependencies = 
+		{
+		  {
+			VK_SUBPASS_EXTERNAL,                            // uint32_t                   srcSubpass
+			0,                                              // uint32_t                   dstSubpass
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,          // VkPipelineStageFlags       srcStageMask
+			VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,     // VkPipelineStageFlags       dstStageMask
+			VK_ACCESS_SHADER_READ_BIT,                      // VkAccessFlags              srcAccessMask
+			VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,   // VkAccessFlags              dstAccessMask
+			VK_DEPENDENCY_BY_REGION_BIT                     // VkDependencyFlags          dependencyFlags
+		  },
+		  {
+			0,                                              // uint32_t                   srcSubpass
+			VK_SUBPASS_EXTERNAL,                            // uint32_t                   dstSubpass
+			VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,      // VkPipelineStageFlags       srcStageMask
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,          // VkPipelineStageFlags       dstStageMask
+			VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,   // VkAccessFlags              srcAccessMask
+			VK_ACCESS_SHADER_READ_BIT,                      // VkAccessFlags              dstAccessMask
+			VK_DEPENDENCY_BY_REGION_BIT                     // VkDependencyFlags          dependencyFlags
+		  }
+		};
+
+		VkRenderPassCreateInfo renderPassCreateInfo =
+		{
+		   VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,                                               // VkStructureType                   sType;
+		   nullptr,                                  												// const void*                       pNext;
+		   0,                                        												// VkRenderPassCreateFlags           flags;
+			attachmentDescriptions.size(),            												// uint32_t                          attachmentCount;
+			attachmentDescriptions.data(),            												// const VkAttachmentDescription*    pAttachments;
+			subpassesDescriptions.size(),             												// uint32_t                          subpassCount;
+			subpassesDescriptions.data(),             												// const VkSubpassDescription*       pSubpasses;
+			shadowMapSubpassDependencies.size(),                      								// uint32_t                          dependencyCount;
+			shadowMapSubpassDependencies.data()                       								// const VkSubpassDependency*        pDependencies;
+		};
+
+		shadowRenderPass.Reset(device.Get(), renderPassCreateInfo);
+	}
+
+
+	void ShadowMapping::CreateSwapchainImageViews()
 	{
 		uint32_t numberOfSwapchainImages = 0;
 		swapchain.GetSwapchainImagesKHR(&numberOfSwapchainImages, nullptr);
@@ -516,7 +597,7 @@ namespace BadgerSandbox
   Took this function from VulkanTutorial:
   https://vulkan-tutorial.com/
 */
-	uint32_t PhongShading::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	uint32_t ShadowMapping::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 	{
 		VkPhysicalDeviceMemoryProperties memProperties;
 		vkGetPhysicalDeviceMemoryProperties(selectedPhysicalDevice, &memProperties);
@@ -536,7 +617,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void PhongShading::CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+	void ShadowMapping::CreateImageVulkanTutorial(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 	{
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -576,7 +657,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkImageView PhongShading::CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+	VkImageView ShadowMapping::CreateImageViewVulkanTutorial(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 	{
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -601,7 +682,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat PhongShading::FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+	VkFormat ShadowMapping::FindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 	{
 		for (VkFormat format : candidates)
 		{
@@ -624,7 +705,7 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	VkFormat PhongShading::FindDepthFormat()
+	VkFormat ShadowMapping::FindDepthFormat()
 	{
 		return FindSupportedFormat(
 			{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -637,14 +718,56 @@ namespace BadgerSandbox
 	  Took this function from VulkanTutorial:
 	  https://vulkan-tutorial.com/
 	*/
-	void PhongShading::CreateDepthImage()
+	void ShadowMapping::CreateDepthImage()
 	{
 		VkFormat depthFormat = FindDepthFormat();
-		CreateImageVulkanTutorial(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
-		depthImageView = CreateImageViewVulkanTutorial(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+		CreateImageVulkanTutorial(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, finalPass.depthImage, finalPass.depthImageMemory);
+		finalPass.depthImageView = CreateImageViewVulkanTutorial(finalPass.depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
-	void PhongShading::CreateGraphicsCommandsBuffers()
+	void ShadowMapping::CreateShadowDepthImage()
+	{
+		shadowImages.resize(renderResourcesCount);
+		VkFormat depthFormat = FindDepthFormat();
+		for (auto& image : shadowImages)
+		{
+			CreateImageVulkanTutorial(1024, 1024, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image.image, image.imageMemory);
+			image.imageView = CreateImageViewVulkanTutorial(image.image, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+		}
+	}
+
+	void ShadowMapping::CreateShadowDepthImageSampler()
+	{
+		VkSamplerCreateInfo samplerCreateInfo = {
+		  VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,              // VkStructureType         sType;
+		  nullptr,											  // const void*             pNext;
+		  0,												  // VkSamplerCreateFlags    flags;
+		  VK_FILTER_LINEAR,									  // VkFilter                magFilter;
+		  VK_FILTER_LINEAR,									  // VkFilter                minFilter;
+		  VK_SAMPLER_MIPMAP_MODE_NEAREST,					  // VkSamplerMipmapMode     mipmapMode;
+		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,			  // VkSamplerAddressMode    addressModeU;
+		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,			  // VkSamplerAddressMode    addressModeV;
+		  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,			  // VkSamplerAddressMode    addressModeW;
+		  0.0f,												  // float                   mipLodBias;
+		  false,											  // VkBool32                anisotropyEnable;
+		  1.0f,												  // float                   maxAnisotropy;
+		  false,											  // VkBool32                compareEnable;
+		  VK_COMPARE_OP_ALWAYS,								  // VkCompareOp             compareOp;
+		  0.0f,												  // float                   minLod;
+		  1.0f,												  // float                   maxLod;
+		  VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,				  // VkBorderColor           borderColor;
+		  false												  // VkBool32                unnormalizedCoordinates;
+		};
+		for (auto& image : shadowImages)
+		{
+			RAPIDVULKAN_CHECK(vkCreateSampler(device.Get(), &samplerCreateInfo, nullptr, &image.textureSampler));
+			image.descriptorImageInfo.imageView = image.imageView;
+			image.descriptorImageInfo.sampler = image.textureSampler;
+			image.descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		}
+	}
+
+	void ShadowMapping::CreateGraphicsCommandsBuffers()
 	{
 		VkCommandPoolCreateInfo commandPoolCreateInfo =
 		{
@@ -691,9 +814,9 @@ namespace BadgerSandbox
 		framebuffers.resize(renderResourcesCount);
 	}
 
-	void PhongShading::CreateDescriptorSetLayout()
+	void ShadowMapping::CreateDescriptorSetLayout()
 	{
-		std::array<VkDescriptorSetLayoutBinding, 2>  layoutBindings{};
+		std::array<VkDescriptorSetLayoutBinding, 3>  layoutBindings{};
 		layoutBindings[0].binding = 0;
 		layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		layoutBindings[0].descriptorCount = 1;
@@ -704,6 +827,10 @@ namespace BadgerSandbox
 		layoutBindings[1].descriptorCount = 1;
 		layoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+		layoutBindings[2].binding = 2;
+		layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		layoutBindings[2].descriptorCount = 1;
+		layoutBindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo =
 		{
@@ -714,40 +841,104 @@ namespace BadgerSandbox
 		  layoutBindings.data()                                       // const VkDescriptorSetLayoutBinding  *pBindings
 		};
 
-		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout));
+		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &finalPass.descriptorSetLayout));
 	}
 
-	void PhongShading::CreateDescriptorPool()
+	void ShadowMapping::CreateShadowDescriptorSetLayout()
 	{
-		uint32_t meshCount = 0;
-		VkDescriptorPoolSize poolSizes = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, renderResourcesCount * 2};
-		VkDescriptorPoolCreateInfo descriptorPoolCI{};
-		descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		descriptorPoolCI.poolSizeCount = 1;
-		descriptorPoolCI.pPoolSizes = &poolSizes;
-		descriptorPoolCI.maxSets = renderResourcesCount;
+		VkDescriptorSetLayoutBinding layoutBinding;
+		layoutBinding.binding = 0;
+		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		layoutBinding.descriptorCount = 1;
+		layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCI, nullptr, &dPool));
+		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,  // VkStructureType                      sType
+		  nullptr,                                              // const void                          *pNext
+		  0,                                                    // VkDescriptorSetLayoutCreateFlags     flags
+		  1,                                                    // uint32_t                             bindingCount
+		  &layoutBinding                                       // const VkDescriptorSetLayoutBinding  *pBindings
+		};
+
+		RapidVulkan::CheckError(vkCreateDescriptorSetLayout(device.Get(), &descriptorSetLayoutCreateInfo, nullptr, &shadowPass.descriptorSetLayout));
 	}
 
-	void PhongShading::AllocateDescriptorSet()
+	void ShadowMapping::CreateDescriptorPool()
 	{
-		descriptorSets.resize(renderResourcesCount);
+		std::vector<VkDescriptorPoolSize> poolSizes = 
+		{
+			{
+			  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			  renderResourcesCount
+			},
+			{
+			  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			  renderResourcesCount
+			},
+			{
+			  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			  renderResourcesCount
+			}
+		};
+
+		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+		descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		descriptorPoolCreateInfo.poolSizeCount = poolSizes.size();
+		descriptorPoolCreateInfo.pPoolSizes = poolSizes.data();
+		descriptorPoolCreateInfo.maxSets = renderResourcesCount;
+
+		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCreateInfo, nullptr, &finalPass.dPool));
+	}
+
+	void ShadowMapping::CreateShadowDescriptorPool()
+	{
+		VkDescriptorPoolSize poolSize = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, renderResourcesCount };
+
+		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+		descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		descriptorPoolCreateInfo.poolSizeCount = 1;
+		descriptorPoolCreateInfo.pPoolSizes = &poolSize;
+		descriptorPoolCreateInfo.maxSets = renderResourcesCount;
+
+		RapidVulkan::CheckError(vkCreateDescriptorPool(device.Get(), &descriptorPoolCreateInfo, nullptr, &shadowPass.dPool));
+	}
+
+	void ShadowMapping::AllocateDescriptorSet()
+	{
+		finalPass.descriptorSets.resize(renderResourcesCount);
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
 		{
 		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, // VkStructureType                sType
 		  nullptr,                                        // const void                    *pNext
-		  dPool,                                          // VkDescriptorPool               descriptorPool
+		  finalPass.dPool,                                          // VkDescriptorPool               descriptorPool
 		  1,                                              // uint32_t                       descriptorSetCount
-		  &descriptorSetLayout                            // const VkDescriptorSetLayout   *pSetLayouts
+		  & finalPass.descriptorSetLayout                            // const VkDescriptorSetLayout   *pSetLayouts
 		};
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-			RapidVulkan::CheckError(vkAllocateDescriptorSets(device.Get(), &descriptorSetAllocateInfo, &descriptorSets[i]));
+			RapidVulkan::CheckError(vkAllocateDescriptorSets(device.Get(), &descriptorSetAllocateInfo, &finalPass.descriptorSets[i]));
 		}
 	}
 
-	void PhongShading::CreateBuffer(VkBuffer& buffer, VkDeviceMemory& memory, void** mappedMemory, VkBufferUsageFlags usage, VkDeviceSize size, VkMemoryPropertyFlags properties)
+	void ShadowMapping::AllocateShadowDescriptorSet()
+	{
+		shadowPass.descriptorSets.resize(renderResourcesCount);
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
+		{
+		  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,       // VkStructureType                sType
+		  nullptr,                                              // const void                    *pNext
+		  shadowPass.dPool,                                     // VkDescriptorPool               descriptorPool
+		  1,                                                    // uint32_t                       descriptorSetCount
+		  &shadowPass.descriptorSetLayout                       // const VkDescriptorSetLayout   *pSetLayouts
+		};
+		for (uint32_t i = 0; i < renderResourcesCount; i++)
+		{
+			RapidVulkan::CheckError(vkAllocateDescriptorSets(device.Get(), &descriptorSetAllocateInfo, &shadowPass.descriptorSets[i]));
+		}
+	}
+
+	void ShadowMapping::CreateBuffer(VkBuffer& buffer, VkDeviceMemory& memory, void** mappedMemory, VkBufferUsageFlags usage, VkDeviceSize size, VkMemoryPropertyFlags properties)
 	{
 		VkBufferCreateInfo createInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 		createInfo.usage = usage;
@@ -777,12 +968,12 @@ namespace BadgerSandbox
 		vkMapMemory(device.Get(), memory, 0, allocationInfo.allocationSize, 0, mappedMemory);
 	}
 
-	void PhongShading::CreateUniformBuffers()
+	void ShadowMapping::CreateUniformBuffers()
 	{
 	   // Matrix uniform buffers will contain:
-		matrixUniformBuffers.resize(renderResourcesCount);
-		size_t bufferSize = sizeof(glm::mat4) * 3;
-		for (auto& uBuffer : matrixUniformBuffers)
+		finalPass.matrixUniformBuffers.resize(renderResourcesCount);
+		size_t bufferSize = sizeof(glm::mat4) * 4;
+		for (auto& uBuffer : finalPass.matrixUniformBuffers)
 		{
 			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 			uBuffer.decriptor.buffer = uBuffer.buffer;
@@ -790,77 +981,82 @@ namespace BadgerSandbox
 			uBuffer.decriptor.range = bufferSize;
 		}
 		
-		lightUniformBuffer.resize(renderResourcesCount);
+		finalPass.lightUniformBuffer.resize(renderResourcesCount);
 		bufferSize = sizeof(glm::vec4) * 2;
-		for (auto& uBuffer : lightUniformBuffer)
+		for (auto& uBuffer : finalPass.lightUniformBuffer)
 		{
 			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 			uBuffer.decriptor.buffer = uBuffer.buffer;
 			uBuffer.decriptor.offset = 0;
 			uBuffer.decriptor.range = bufferSize;
 		}
-
 	}
 
-	void PhongShading::UpdateDescriptorSet()
+	void ShadowMapping::CreateShadowUniformBuffers()
+	{
+		// Matrix uniform buffers will contain:
+		shadowPass.matrixUniformBuffers.resize(renderResourcesCount);
+		size_t bufferSize = sizeof(glm::mat4) * 4;
+		for (auto& uBuffer : shadowPass.matrixUniformBuffers)
+		{
+			CreateBuffer(uBuffer.buffer, uBuffer.memory, &uBuffer.mapped, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, bufferSize, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			uBuffer.decriptor.buffer = uBuffer.buffer;
+			uBuffer.decriptor.offset = 0;
+			uBuffer.decriptor.range = bufferSize;
+		}
+	}
+
+	void ShadowMapping::UpdateDescriptorSet()
 	{
 		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-			std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+			std::array<VkWriteDescriptorSet, 3> writeDescriptorSets{};
 
 			writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDescriptorSets[0].dstSet = descriptorSets[i];
+			writeDescriptorSets[0].dstSet = finalPass.descriptorSets[i];
 			writeDescriptorSets[0].dstBinding = 0;
 			writeDescriptorSets[0].descriptorCount = 1;
 			writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			writeDescriptorSets[0].pBufferInfo = &(matrixUniformBuffers[i].decriptor);
+			writeDescriptorSets[0].pBufferInfo = &(finalPass.matrixUniformBuffers[i].decriptor);
 
 			writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDescriptorSets[1].dstSet = descriptorSets[i];
+			writeDescriptorSets[1].dstSet = finalPass.descriptorSets[i];
 			writeDescriptorSets[1].dstBinding = 1;
 			writeDescriptorSets[1].descriptorCount = 1;
 			writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			writeDescriptorSets[1].pBufferInfo = &(lightUniformBuffer[i].decriptor);
+			writeDescriptorSets[1].pBufferInfo = &(finalPass.lightUniformBuffer[i].decriptor);
+
+			writeDescriptorSets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[2].dstSet = finalPass.descriptorSets[i];
+			writeDescriptorSets[2].dstBinding = 2;
+			writeDescriptorSets[2].descriptorCount = 1;
+			writeDescriptorSets[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			writeDescriptorSets[2].pImageInfo = &(shadowImages[i].descriptorImageInfo);
 
 			vkUpdateDescriptorSets(device.Get(), writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
 		}
 	}
 
-	void PhongShading::CreateVertexBuffer()
+	void ShadowMapping::UpdateShadowPassDescriptorSet()
 	{
-		float vertexData[6][8] =
+		for (uint32_t i = 0; i < renderResourcesCount; i++)
 		{
-			{0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0},
-			{0.5, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0},
-			
-			{0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0},
-			{0.0, 0.5, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0},
-			
-			{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0},
-			{0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 1.0, 1.0}
-		};
-		
-		vertexBuffers.resize(renderResourcesCount);
-		for (auto& vBuffer : vertexBuffers)
-		{
-			CreateBuffer(vBuffer.buffer, vBuffer.memory, &vBuffer.mapped, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(vertexData), VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-			std::memcpy(vBuffer.mapped, vertexData, sizeof(vertexData));
-			VkMappedMemoryRange flushRange =
-			{
-			  VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,            // VkStructureType        sType
-			  nullptr,                                          // const void            *pNext
-			  vBuffer.memory,                                   // VkDeviceMemory         memory
-			  0,                                                // VkDeviceSize           offset
-			  VK_WHOLE_SIZE                                     // VkDeviceSize           size
-			};
-			vkFlushMappedMemoryRanges(device.Get(), 1, &flushRange);
-			vkUnmapMemory(device.Get(), vBuffer.memory);
+			VkWriteDescriptorSet writeDescriptorSet{};
+
+			writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSet.dstSet = shadowPass.descriptorSets[i];
+			writeDescriptorSet.dstBinding = 0;
+			writeDescriptorSet.descriptorCount = 1;
+			writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptorSet.pBufferInfo = &(shadowPass.matrixUniformBuffers[i].decriptor);
+
+			vkUpdateDescriptorSets(device.Get(), 1, &writeDescriptorSet, 0, nullptr);
 		}
 	}
 
-	void PhongShading::CreateGraphicsPipeline()
+	void ShadowMapping::CreateGraphicsPipeline()
 	{
-		std::string vertexShaderPath(std::string(PHONG_PROJECT_CONTENT) + "vert.spv");
+		std::string vertexShaderPath(std::string(SHADOW_MAPPING_PROJECT_CONTENT) + "vert.spv");
 		std::ifstream vertexShaderIs(vertexShaderPath, std::ios::binary);
 
 		if (vertexShaderIs.fail())
@@ -883,10 +1079,10 @@ namespace BadgerSandbox
 		shaderModuleCreateInfo.codeSize = vertexShaderBuffer.size();
 		shaderModuleCreateInfo.pCode = reinterpret_cast<const uint32_t*>(vertexShaderBuffer.data());
 
-		vertexShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
+		finalPass.vertexShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
 
 		// Rubric 3: The program reads data from a file
-		std::string fragmentShaderPath(std::string(PHONG_PROJECT_CONTENT) + "frag.spv");
+		std::string fragmentShaderPath(std::string(SHADOW_MAPPING_PROJECT_CONTENT) + "frag.spv");
 		std::ifstream fragmentShaderIs(fragmentShaderPath, std::ios::binary);
 
 		if (fragmentShaderIs.fail())
@@ -905,7 +1101,7 @@ namespace BadgerSandbox
 		shaderModuleCreateInfo.codeSize = fragmentShaderBuffer.size();
 		shaderModuleCreateInfo.pCode = reinterpret_cast<const uint32_t*>(fragmentShaderBuffer.data());
 
-		fragmentShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
+		finalPass.fragmentShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
 
 		std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos =
 		{
@@ -914,7 +1110,7 @@ namespace BadgerSandbox
 			nullptr,                                                    // const void                                    *pNext
 			0,                                                          // VkPipelineShaderStageCreateFlags               flags
 			VK_SHADER_STAGE_VERTEX_BIT,                                 // VkShaderStageFlagBits                          stage
-			vertexShaderModule.Get(),                                   // VkShaderModule                                 module
+			finalPass.vertexShaderModule.Get(),                                   // VkShaderModule                                 module
 			"main",                                                     // const char                                    *pName
 			nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo  // Fragment shader
 		  },
@@ -923,7 +1119,7 @@ namespace BadgerSandbox
 			nullptr,                                                    // const void                                    *pNext
 			0,                                                          // VkPipelineShaderStageCreateFlags               flags
 			VK_SHADER_STAGE_FRAGMENT_BIT,                               // VkShaderStageFlagBits                          stage
-			fragmentShaderModule.Get(),                                 // VkShaderModule                                 module
+			finalPass.fragmentShaderModule.Get(),                                 // VkShaderModule                                 module
 			"main",                                                     // const char                                    *pName
 			nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo
 		  }
@@ -1062,7 +1258,7 @@ namespace BadgerSandbox
 		};
 
 		// Pipeline layout
-		const std::vector<VkDescriptorSetLayout> setLayouts = { descriptorSetLayout };
+		const std::vector<VkDescriptorSetLayout> setLayouts = { finalPass.descriptorSetLayout };
 
 		VkPipelineLayoutCreateInfo layoutCreateInfo =
 		{
@@ -1075,7 +1271,7 @@ namespace BadgerSandbox
 		  nullptr                                         // const VkPushConstantRange     *pPushConstantRanges
 		};
 
-		if (vkCreatePipelineLayout(device.Get(), &layoutCreateInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
+		if (vkCreatePipelineLayout(device.Get(), &layoutCreateInfo, nullptr, &finalPass.pipelineLayout) != VK_SUCCESS)
 		{
 			std::cout << "Couldn't create a Pipeline Layout" << std::endl;
 		}
@@ -1096,22 +1292,243 @@ namespace BadgerSandbox
 		  &depthStencilCreateInfo,                                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
 		  &colorBlendStateCreateInfo,                                   // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
 		  &dynamicStateCreateInfo,                                      // const VkPipelineDynamicStateCreateInfo        *pDynamicState
-		  pipelineLayout,                                               // VkPipelineLayout                               layout
+		  finalPass.pipelineLayout,                                               // VkPipelineLayout                               layout
 		  renderPass.Get(),                                             // VkRenderPass                                   renderPass
 		  0,                                                            // uint32_t                                       subpass
 		  VK_NULL_HANDLE,                                               // VkPipeline                                     basePipelineHandle
 		  -1                                                            // int32_t                                        basePipelineIndex
 		};
 		VkPipelineCache newCache = VK_NULL_HANDLE;
-		graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
+		finalPass.graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
 	}
 
-	void PhongShading::CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
+	void ShadowMapping::CreateShadowPipeline()
+	{
+		std::string vertexShaderPath(std::string(SHADOW_MAPPING_PROJECT_CONTENT) + "ShadowVert.spv");
+		std::ifstream vertexShaderIs(vertexShaderPath, std::ios::binary);
+
+		if (vertexShaderIs.fail())
+		{
+			throw std::runtime_error("COULD NOT OPEN FILE");
+		}
+		std::streampos begin, end;
+		begin = vertexShaderIs.tellg();
+		vertexShaderIs.seekg(0, std::ios::end);
+		end = vertexShaderIs.tellg();
+		std::vector<char> vertexShaderBuffer(static_cast<size_t>(end - begin));
+		vertexShaderIs.seekg(0, std::ios::beg);
+		vertexShaderIs.read(&vertexShaderBuffer[0], end - begin);
+		vertexShaderIs.close();
+
+		VkShaderModuleCreateInfo shaderModuleCreateInfo;
+		shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		shaderModuleCreateInfo.pNext = nullptr;
+		shaderModuleCreateInfo.flags = 0;
+		shaderModuleCreateInfo.codeSize = vertexShaderBuffer.size();
+		shaderModuleCreateInfo.pCode = reinterpret_cast<const uint32_t*>(vertexShaderBuffer.data());
+
+		shadowPass.vertexShaderModule.Reset(device.Get(), shaderModuleCreateInfo);
+
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateInfos =
+		{
+		  {
+			VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,        // VkStructureType                                sType
+			nullptr,                                                    // const void                                    *pNext
+			0,                                                          // VkPipelineShaderStageCreateFlags               flags
+			VK_SHADER_STAGE_VERTEX_BIT,                                 // VkShaderStageFlagBits                          stage
+			shadowPass.vertexShaderModule.Get(),                                   // VkShaderModule                                 module
+			"main",                                                     // const char                                    *pName
+			nullptr                                                     // const VkSpecializationInfo                    *pSpecializationInfo  // Fragment shader
+		  }
+		};
+
+		std::vector<VkVertexInputBindingDescription> vertexInputBindingDescriptions =
+		{
+		  {
+			0,                                                          // uint32_t                                       binding
+			sizeof(vkglTF::Model::Vertex),                              // uint32_t                                       stride
+			VK_VERTEX_INPUT_RATE_VERTEX                                 // VkVertexInputRate                              inputRate
+		  }
+		};
+
+		std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions =
+		{
+		  {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+		  {1, 0, VK_FORMAT_R32G32B32_SFLOAT, sizeof(float) * 3},
+		  {2, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 6},
+		  {3, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 8},
+		  {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 10},
+		  {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 14}
+		};
+
+		VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
+		  VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,      // VkStructureType                                sType
+		  nullptr,                                                        // const void                                    *pNext
+		  0,                                                              // VkPipelineVertexInputStateCreateFlags          flags;
+		  vertexInputBindingDescriptions.size(),                          // uint32_t                                       vertexBindingDescriptionCount
+		  vertexInputBindingDescriptions.data(),                          // const VkVertexInputBindingDescription         *pVertexBindingDescriptions
+		  vertexAttributeDescriptions.size(),                             // uint32_t                                       vertexAttributeDescriptionCount
+		  vertexAttributeDescriptions.data()                              // const VkVertexInputAttributeDescription       *pVertexAttributeDescriptions
+		};
+
+
+		VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,  // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineInputAssemblyStateCreateFlags        flags
+		  VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,                          // VkPrimitiveTopology                            topology
+		  VK_FALSE                                                      // VkBool32                                       primitiveRestartEnable
+		};
+
+		VkPipelineViewportStateCreateInfo viewportStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,        // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineViewportStateCreateFlags             flags
+		  1,                                                            // uint32_t                                       viewportCount
+		  nullptr,                                                      // const VkViewport                              *pViewports
+		  1,                                                            // uint32_t                                       scissorCount
+		  nullptr                                                       // const VkRect2D                                *pScissors
+		};
+
+		std::array<VkDynamicState, 2> dynamicStates =
+		{
+		  VK_DYNAMIC_STATE_VIEWPORT,
+		  VK_DYNAMIC_STATE_SCISSOR,
+		};
+
+		VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,         // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineDynamicStateCreateFlags              flags
+		  static_cast<uint32_t>(dynamicStates.size()),                  // uint32_t                                       dynamicStateCount
+		  dynamicStates.data()                                          // const VkDynamicState                          *pDynamicStates
+		};
+
+		VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,   // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineRasterizationStateCreateFlags        flags
+		  VK_FALSE,                                                     // VkBool32                                       depthClampEnable
+		  VK_FALSE,                                                     // VkBool32                                       rasterizerDiscardEnable
+		  VK_POLYGON_MODE_FILL,                                         // VkPolygonMode                                  polygonMode
+		  VK_CULL_MODE_FRONT_BIT,                                            // VkCullModeFlags                                cullMode
+		  VK_FRONT_FACE_COUNTER_CLOCKWISE,                              // VkFrontFace                                    frontFace
+		  VK_FALSE,                                                     // VkBool32                                       depthBiasEnable
+		  0.0f,                                                         // float                                          depthBiasConstantFactor
+		  0.0f,                                                         // float                                          depthBiasClamp
+		  0.0f,                                                         // float                                          depthBiasSlopeFactor
+		  2.0f                                                          // float                                          lineWidth
+		};
+
+		VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,     // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineMultisampleStateCreateFlags          flags
+		  VK_SAMPLE_COUNT_1_BIT,                                        // VkSampleCountFlagBits                          rasterizationSamples
+		  VK_FALSE,                                                     // VkBool32                                       sampleShadingEnable
+		  1.0f,                                                         // float                                          minSampleShading
+		  nullptr,                                                      // const VkSampleMask                            *pSampleMask
+		  VK_FALSE,                                                     // VkBool32                                       alphaToCoverageEnable
+		  VK_FALSE                                                      // VkBool32                                       alphaToOneEnable
+		};
+
+		VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo =
+		{
+			VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,                // sType
+			nullptr,																   // pNext
+			0,																		   // flags
+			VK_TRUE,																   // depthTestEnable
+			VK_TRUE,																   // depthWriteEnable
+			VK_COMPARE_OP_LESS_OR_EQUAL,								     		   // depthCompareOp
+			VK_FALSE,																   // depthBoundsTestEnable
+			VK_FALSE,																   // stencilTestEnable
+			{},                                                                        // front
+			{},                                                                        // back
+			0.0f,                                                                      // minDepthBounds
+			1.0f                                                                       // maxDepthBounds
+		};																			   
+
+		VkPipelineColorBlendAttachmentState colorBlendAttachmentState =
+		{
+		  VK_FALSE,                                                     // VkBool32                                       blendEnable
+		  VK_BLEND_FACTOR_ONE,                                          // VkBlendFactor                                  srcColorBlendFactor
+		  VK_BLEND_FACTOR_ZERO,                                         // VkBlendFactor                                  dstColorBlendFactor
+		  VK_BLEND_OP_ADD,                                              // VkBlendOp                                      colorBlendOp
+		  VK_BLEND_FACTOR_ONE,                                          // VkBlendFactor                                  srcAlphaBlendFactor
+		  VK_BLEND_FACTOR_ZERO,                                         // VkBlendFactor                                  dstAlphaBlendFactor
+		  VK_BLEND_OP_ADD,                                              // VkBlendOp                                      alphaBlendOp
+		  VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |         // VkColorComponentFlags                          colorWriteMask
+		  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+		};
+
+		VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,     // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineColorBlendStateCreateFlags           flags
+		  VK_FALSE,                                                     // VkBool32                                       logicOpEnable
+		  VK_LOGIC_OP_COPY,                                             // VkLogicOp                                      logicOp
+		  1,                                                            // uint32_t                                       attachmentCount
+		  &colorBlendAttachmentState,                                  // const VkPipelineColorBlendAttachmentState     *pAttachments
+		  { 0.0f, 0.0f, 0.0f, 0.0f }                                    // float                                          blendConstants[4]
+		};
+
+		// Pipeline layout
+		const std::vector<VkDescriptorSetLayout> setLayouts = { shadowPass.descriptorSetLayout };
+
+		VkPipelineLayoutCreateInfo layoutCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,  // VkStructureType                sType
+		  nullptr,                                        // const void                    *pNext
+		  0,                                              // VkPipelineLayoutCreateFlags    flags
+		  setLayouts.size(),                              // uint32_t                       setLayoutCount
+		  setLayouts.data(),                              // const VkDescriptorSetLayout   *pSetLayouts
+		  0,                                              // uint32_t                       pushConstantRangeCount
+		  nullptr                                         // const VkPushConstantRange     *pPushConstantRanges
+		};
+
+		if (vkCreatePipelineLayout(device.Get(), &layoutCreateInfo, nullptr, &shadowPass.pipelineLayout) != VK_SUCCESS)
+		{
+			std::cout << "Couldn't create a Pipeline Layout" << std::endl;
+		}
+
+		VkGraphicsPipelineCreateInfo pipelineCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,              // VkStructureType                                sType
+		  nullptr,                                                      // const void                                    *pNext
+		  0,                                                            // VkPipelineCreateFlags                          flags
+		  static_cast<uint32_t>(shaderStageCreateInfos.size()),         // uint32_t                                       stageCount
+		  shaderStageCreateInfos.data(),                                // const VkPipelineShaderStageCreateInfo         *pStages
+		  &vertexInputStateCreateInfo,                                  // const VkPipelineVertexInputStateCreateInfo    *pVertexInputState;
+		  &inputAssemblyStateCreateInfo,                                // const VkPipelineInputAssemblyStateCreateInfo  *pInputAssemblyState
+		  nullptr,                                                      // const VkPipelineTessellationStateCreateInfo   *pTessellationState
+		  &viewportStateCreateInfo,                                     // const VkPipelineViewportStateCreateInfo       *pViewportState
+		  &rasterizationStateCreateInfo,                                // const VkPipelineRasterizationStateCreateInfo  *pRasterizationState
+		  &multisampleStateCreateInfo,                                  // const VkPipelineMultisampleStateCreateInfo    *pMultisampleState
+		  &depthStencilCreateInfo,                                      // const VkPipelineDepthStencilStateCreateInfo   *pDepthStencilState
+		  &colorBlendStateCreateInfo,                                   // const VkPipelineColorBlendStateCreateInfo     *pColorBlendState
+		  &dynamicStateCreateInfo,                                      // const VkPipelineDynamicStateCreateInfo        *pDynamicState
+		  shadowPass.pipelineLayout,                                    // VkPipelineLayout                               layout
+		  shadowRenderPass.Get(),                                             // VkRenderPass                                   renderPass
+		  0,                                                            // uint32_t                                       subpass
+		  VK_NULL_HANDLE,                                               // VkPipeline                                     basePipelineHandle
+		  -1                                                            // int32_t                                        basePipelineIndex
+		};
+		VkPipelineCache newCache = VK_NULL_HANDLE;
+		shadowPass.graphicsPipeline.Reset(device.Get(), newCache, pipelineCreateInfo);
+	}
+
+	void ShadowMapping::CreateJustInTimeFramebuffer(RapidVulkan::Framebuffer& framebuffer, const RapidVulkan::ImageView& imageView)
 	{
 		std::array<VkImageView, 2> attachments =
 		{
 				imageView.Get(),
-				depthImageView
+				finalPass.depthImageView
 		};
 		VkFramebufferCreateInfo framebufferCreateInfo =
 		{
@@ -1129,7 +1546,26 @@ namespace BadgerSandbox
 		framebuffer.Reset(device.Get(), framebufferCreateInfo);
 	}
 
-	void PhongShading::RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
+	void ShadowMapping::CreateJustInTimeShadowFramebuffer(RapidVulkan::Framebuffer& framebuffer, const VkImageView& imageView)
+	{
+		VkImageView attachment = imageView;
+		VkFramebufferCreateInfo framebufferCreateInfo =
+		{
+		  VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,      // VkStructureType                sType
+		  nullptr,                                        // const void                    *pNext
+		  0,                                              // VkFramebufferCreateFlags       flags
+		  shadowRenderPass.Get(),                               // VkRenderPass                   renderPass
+		  1,                                              // uint32_t                       attachmentCount
+		  &attachment,                                    // const VkImageView             *pAttachments
+		  1024,                          // uint32_t                       width
+		  1024,                         // uint32_t                       height
+		  1                                               // uint32_t                       layers
+		};
+
+		framebuffer.Reset(device.Get(), framebufferCreateInfo);
+	}
+
+	void ShadowMapping::RecordJustInTimeCommandBuffers(const size_t& resourceIndex)
 	{
 		VkCommandBufferBeginInfo commandBufferBeginInfo =
 		{
@@ -1141,14 +1577,111 @@ namespace BadgerSandbox
 		std::vector<VkCommandBuffer> commandBuffers = graphicsCommandBuffers.Get();
 		vkBeginCommandBuffer(commandBuffers[resourceIndex], &commandBufferBeginInfo);
 
-		VkImageSubresourceRange image_subresource_range =
+		std::array<VkClearValue, 1> shadowClearValues{};
+		shadowClearValues[0].depthStencil = { 1.0f, 0 };
+
+		VkRenderPassBeginInfo shadowRenderPassBeginInfo =
 		{
-		  VK_IMAGE_ASPECT_COLOR_BIT,                          // VkImageAspectFlags                     aspectMask
+		  VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,           // VkStructureType                        sType
+		  nullptr,                                            // const void                            *pNext
+		  shadowRenderPass.Get(),                             // VkRenderPass                           renderPass
+		  shadowImages[resourceIndex].framebuffer.Get(),      // VkFramebuffer                          framebuffer
+		  {                                                   // VkRect2D                               renderArea
+			{                                                 // VkOffset2D                             offset
+			  0,                                              // int32_t                                x
+			  0                                               // int32_t                                y
+			},
+			{
+			  1024,
+			  1024
+			}
+		  },
+		  shadowClearValues.size(),                                 // uint32_t                               clearValueCount
+		  shadowClearValues.data()                                  // const VkClearValue                    *pClearValues
+		};
+
+		// Update UBOs
+		shadowPass.modelMatrix = glm::mat4(1.0f);
+		shadowPass.viewMatrix = glm::lookAt(/*shadowPass.eyeLocation*/glm::vec3(0.0f, 1.75f, 2.0f), shadowPass.eyeDirection, shadowPass.up);
+		shadowPass.projectionMatrix = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 50.0f);
+		shadowPass.projectionMatrix[1][1] *= -1;
+
+		shadowPass.modelViewMatrix = shadowPass.viewMatrix * shadowPass.modelMatrix;
+		shadowPass.MVPMatrix = shadowPass.projectionMatrix * shadowPass.viewMatrix * shadowPass.modelMatrix;
+		shadowPass.normalMatrix = shadowPass.modelViewMatrix;
+
+		uniformBuffer currentShadowUniformBuffer = shadowPass.matrixUniformBuffers[resourceIndex];
+		float* memory = (float*)currentShadowUniformBuffer.mapped;
+		memcpy((void*)memory, glm::value_ptr(shadowPass.normalMatrix), sizeof(glm::mat4));
+		memory += sizeof(glm::mat4) / sizeof(float);
+		memcpy((void*)memory, glm::value_ptr(shadowPass.modelViewMatrix), sizeof(glm::mat4));
+		memory += sizeof(glm::mat4) / sizeof(float);
+		memcpy((void*)memory, glm::value_ptr(shadowPass.MVPMatrix), sizeof(glm::mat4));
+
+		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &shadowRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		vkCmdBindPipeline(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPass.graphicsPipeline.Get());
+
+		VkViewport shadowViewport =
+		{
+		  0.0f,                                               // float                                  x
+		  0.0f,                                               // float                                  y
+		  1024.0f,                                            // float                                  width
+		  1024.0f,                                            // float                                  height
+		  0.0f,                                               // float                                  minDepth
+		  1.0f                                                // float                                  maxDepth
+		};
+
+		VkRect2D shadowScissor = {
+		  {                                                   // VkOffset2D                             offset
+			0,                                                  // int32_t                                x
+			0                                                   // int32_t                                y
+		  },
+		  {                                                   // VkExtent2D                             extent
+			1024,                                             // uint32_t                               width
+			1024                                              // uint32_t                               height
+		  }
+		};
+
+		vkCmdSetViewport(commandBuffers[resourceIndex], 0, 1, &shadowViewport);
+		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &shadowScissor);
+
+		VkDeviceSize offset = 0;
+		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPass.pipelineLayout, 0, 1,
+			&(shadowPass.descriptorSets[resourceIndex]), 0, nullptr);
+		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &NyotenguModel.vertices.buffer, &offset);
+		if (NyotenguModel.indices.buffer != VK_NULL_HANDLE)
+		{
+			vkCmdBindIndexBuffer(commandBuffers[resourceIndex], NyotenguModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+		for (auto node : NyotenguModel.nodes)
+		{
+			RenderNode(*node, resourceIndex, commandBuffers[resourceIndex], shadowPass.pipelineLayout);
+		}
+		vkCmdEndRenderPass(commandBuffers[resourceIndex]);
+
+		VkImageSubresourceRange imageSubresourceRange =
+		{
+		  VK_IMAGE_ASPECT_DEPTH_BIT,                          // VkImageAspectFlags                     aspectMask
 		  0,                                                  // uint32_t                               baseMipLevel
 		  1,                                                  // uint32_t                               levelCount
 		  0,                                                  // uint32_t                               baseArrayLayer
 		  1                                                   // uint32_t                               layerCount
 		};
+
+		VkImageMemoryBarrier imageMemoryBarrier = {};
+		imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageMemoryBarrier.pNext = nullptr;
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		imageMemoryBarrier.srcQueueFamilyIndex = suitableQueueFamilyIndex;
+		imageMemoryBarrier.dstQueueFamilyIndex = suitableQueueFamilyIndex;
+		imageMemoryBarrier.image = shadowImages[resourceIndex].image;
+		imageMemoryBarrier.subresourceRange = imageSubresourceRange;
+
+		vkCmdPipelineBarrier(commandBuffers[resourceIndex], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 
 		std::array<VkClearValue, 2> clearValues{};
 		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
@@ -1172,27 +1705,29 @@ namespace BadgerSandbox
 		};
 
 		// Update UBOs
-		modelMatrix = glm::mat4(1.0f);
-		viewMatrix = glm::lookAt(eyeLocation, eyeDirection, up);
-		projectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
-		projectionMatrix[1][1] *= -1;
+		finalPass.modelMatrix = glm::mat4(1.0f);
+		finalPass.viewMatrix = glm::lookAt(finalPass.eyeLocation, finalPass.eyeDirection, finalPass.up);
+		finalPass.projectionMatrix = glm::perspective(glm::radians(70.0f), 1920.0f / 1080.0f, 0.1f, 100.0f);
+		finalPass.projectionMatrix[1][1] *= -1;
 
 		
-		modelViewMatrix = viewMatrix * modelMatrix;
-		MVPMatrix = projectionMatrix * viewMatrix * modelMatrix;
-		normalMatrix = modelViewMatrix;
+		finalPass.modelViewMatrix = finalPass.viewMatrix * finalPass.modelMatrix;
+		finalPass.MVPMatrix = finalPass.projectionMatrix * finalPass.viewMatrix * finalPass.modelMatrix;
+		finalPass.normalMatrix = finalPass.modelViewMatrix;
 
-		uniformBuffer currentUniformBuffer = matrixUniformBuffers[resourceIndex];
-		float* memory = (float*)currentUniformBuffer.mapped;
-		memcpy((void*)memory, glm::value_ptr(normalMatrix), sizeof(glm::mat4));
+		uniformBuffer currentUniformBuffer = finalPass.matrixUniformBuffers[resourceIndex];
+		memory = (float*)currentUniformBuffer.mapped;
+		memcpy((void*)memory, glm::value_ptr(finalPass.normalMatrix), sizeof(glm::mat4));
 		memory += sizeof(glm::mat4) / sizeof(float);
-		memcpy((void*)memory, glm::value_ptr(modelViewMatrix) , sizeof(glm::mat4));
+		memcpy((void*)memory, glm::value_ptr(finalPass.modelViewMatrix) , sizeof(glm::mat4));
 		memory += sizeof(glm::mat4)/sizeof(float);
-		memcpy((void*)memory, glm::value_ptr(MVPMatrix), sizeof(glm::mat4));
+		memcpy((void*)memory, glm::value_ptr(finalPass.MVPMatrix), sizeof(glm::mat4));
+		memory += sizeof(glm::mat4) / sizeof(float);
+		memcpy((void*)memory, glm::value_ptr(shadowPass.MVPMatrix), sizeof(glm::mat4));
 
-		glm::vec4 lightPosition = viewMatrix * glm::vec4(0.0f, 1.75f, 1.0f, 1.0f);
+		glm::vec4 lightPosition = finalPass.viewMatrix * glm::vec4(0.0f, 1.75f, 2.0f, 1.0f);
 		glm::vec4 lightIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-		uniformBuffer currentLightUniformBuffer = lightUniformBuffer[resourceIndex];
+		uniformBuffer currentLightUniformBuffer = finalPass.lightUniformBuffer[resourceIndex];
 		memory = (float*)currentLightUniformBuffer.mapped;
 		memcpy((void*)memory, glm::value_ptr(lightPosition), sizeof(glm::mat4));
 		memory += sizeof(glm::vec4) / sizeof(float);
@@ -1200,7 +1735,7 @@ namespace BadgerSandbox
 
 		vkCmdBeginRenderPass(commandBuffers[resourceIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		vkCmdBindPipeline(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.Get());
+		vkCmdBindPipeline(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, finalPass.graphicsPipeline.Get());
 
 		VkViewport viewport =
 		{
@@ -1226,17 +1761,17 @@ namespace BadgerSandbox
 		vkCmdSetViewport(commandBuffers[resourceIndex], 0, 1, &viewport);
 		vkCmdSetScissor(commandBuffers[resourceIndex], 0, 1, &scissor);
 		
-		VkDeviceSize offset = 0;
-		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
-			&(descriptorSets[resourceIndex]), 0, nullptr);
-		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &NyotenguModel.vertices.buffer, &offset);
-		if (NyotenguModel.indices.buffer != VK_NULL_HANDLE)
+		offset = 0;
+		vkCmdBindDescriptorSets(commandBuffers[resourceIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, finalPass.pipelineLayout, 0, 1,
+			&(finalPass.descriptorSets[resourceIndex]), 0, nullptr);
+		vkCmdBindVertexBuffers(commandBuffers[resourceIndex], 0, 1, &NyotenguModel_Ground.vertices.buffer, &offset);
+		if (NyotenguModel_Ground.indices.buffer != VK_NULL_HANDLE)
 		{
-			vkCmdBindIndexBuffer(commandBuffers[resourceIndex], NyotenguModel.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(commandBuffers[resourceIndex], NyotenguModel_Ground.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 		}
-		for (auto node : NyotenguModel.nodes)
+		for (auto node : NyotenguModel_Ground.nodes)
 		{
-			RenderNode(*node, resourceIndex, commandBuffers[resourceIndex], pipelineLayout);
+			RenderNode(*node, resourceIndex, commandBuffers[resourceIndex], finalPass.pipelineLayout);
 		}
 		
 		
@@ -1249,7 +1784,12 @@ namespace BadgerSandbox
 		}
 	}
 
-	void PhongShading::Draw()
+	void ShadowMapping::RecordJustInTimeShadowCommandBuffers(const size_t& resourceIndex)
+	{
+
+	}
+
+	void ShadowMapping::Draw()
 	{
 		static size_t resourceIndex = 0;
 		uint32_t imageIndex;
@@ -1260,8 +1800,13 @@ namespace BadgerSandbox
 		}
 		vkResetFences(device.Get(), 1, &fences[resourceIndex]);
 
+
+
+
+
 		vkAcquireNextImageKHR(device.Get(), swapchain.Get(), UINT64_MAX, imageAvailable[resourceIndex].Get(), VK_NULL_HANDLE, &imageIndex);
 		CreateJustInTimeFramebuffer(framebuffers[resourceIndex], swapchainImageViews[imageIndex]);
+		CreateJustInTimeShadowFramebuffer(shadowImages[resourceIndex].framebuffer, shadowImages[resourceIndex].imageView);
 		RecordJustInTimeCommandBuffers(resourceIndex);
 
 		std::vector<VkCommandBuffer> commandBuffers = graphicsCommandBuffers.Get();
@@ -1302,24 +1847,24 @@ namespace BadgerSandbox
 		resourceIndex = (resourceIndex + 1) % renderResourcesCount;
 	}
 
-	void PhongShading::RotateHorizontal(float angle)
+	void ShadowMapping::RotateHorizontal(float angle)
 	{
 		//Rotation left means rotating around my up vector
-		glm::vec3 forward = glm::normalize(eyeLocation - eyeDirection);
-		glm::vec3 left = glm::cross(glm::normalize(up), forward);
+		glm::vec3 forward = glm::normalize(finalPass.eyeLocation - finalPass.eyeDirection);
+		glm::vec3 left = glm::cross(glm::normalize(finalPass.up), forward);
 		glm::vec3 actualUp = glm::cross(forward, left);
 		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, actualUp);
-		eyeLocation = rotation * eyeLocation;
+		finalPass.eyeLocation = rotation * finalPass.eyeLocation;
 	}
 
-	void PhongShading::RotateVertical(float angle)
+	void ShadowMapping::RotateVertical(float angle)
 	{
 		//Rotation up, means rotation around my left or right vector
 		// I need to define where left is, based on the current eye position:
-		glm::vec3 forward = glm::normalize(eyeLocation - eyeDirection);
-		glm::vec3 left = glm::cross(glm::normalize(up), forward);
+		glm::vec3 forward = glm::normalize(finalPass.eyeLocation - finalPass.eyeDirection);
+		glm::vec3 left = glm::cross(glm::normalize(finalPass.up), forward);
 		glm::mat3 rotation = glm::rotate(glm::mat4(1.0f), angle, left);
-		eyeLocation = rotation * eyeLocation;
+		finalPass.eyeLocation = rotation * finalPass.eyeLocation;
 		/*
 		forward = glm::normalize(eyeLocation - eyeDirection);
 		left = glm::cross(glm::normalize(up), forward);
@@ -1328,22 +1873,11 @@ namespace BadgerSandbox
 		*/
 	}
 
-	PhongShading::PhongShading()
+	ShadowMapping::ShadowMapping()
 		: renderResourcesCount(3)
 		, suitablePhysicalDeviceIndex(0xFFFFFFFF)
 		, suitableQueueFamilyIndex(0xFFFFFFFF)
-		, up(0.0f, 1.0f, 0.0f)
-        , eyeLocation(0.0f, 2.5f, 2.0f)
-	    , eyeDirection(0.0f, 0.0f, 0.0f)
-	    , initialUp(0.0f, 1.0f, 0.0f)
-	    , initialEyeLocation(0.0f, 0.0f, 2.0f)
-	    , initialEyeDirection(0.0f, 0.0f, 0.0f)
-		, leftPlane({0, 0, 0, 0})
-		, rightPlane({ 0, 0, 0, 0 })
-		, bottomPlane({ 0, 0, 0, 0 })
-		, topPlane({ 0, 0, 0, 0 })
-		, nearPlane({ 0, 0, 0, 0 })
-		, farPlane({ 0, 0, 0, 0 })
+
 	{
 		WindowFactory windowFactory;
 		window = windowFactory.Create(std::array<uint32_t, 2>{1920, 1080}, std::array<uint32_t, 2>{0, 0}, std::string{ "Vector Testing" });
@@ -1352,6 +1886,18 @@ namespace BadgerSandbox
 		{
 			requestedExtensions[extension] = false;
 		}
+
+		finalPass.up = glm::vec3(0.0f, 1.0f, 0.0f);
+		finalPass.eyeLocation = glm::vec3(0.0f, 2.5f, 2.0f);
+		finalPass.eyeDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+		
+		shadowPass.up = finalPass.up;
+		shadowPass.eyeLocation = glm::vec3(0.0f, 2.5f, 2.0f);
+		shadowPass.eyeDirection = glm::vec3(0.0f, 0.0f, 0.0f);
+
+		finalPass.initialUp = glm::vec3(0.0f, 1.0f, 0.0f);
+		finalPass.initialEyeLocation = glm::vec3(0.0f, 0.0f, 2.0f);
+		finalPass.initialEyeDirection = glm::vec3(0.0f, 0.0f, 0.0f);
 
 		try
 		{
@@ -1362,18 +1908,28 @@ namespace BadgerSandbox
 			CreateFences();
 			CreateSwapchain();
 			CreateRenderPass();
+			CreateShadowRenderPass();
 			CreateSwapchainImageViews();
 			CreateDepthImage();
+			CreateShadowDepthImage();
+			CreateShadowDepthImageSampler();
 			CreateGraphicsCommandsBuffers();
 			CreateDescriptorSetLayout();
+			CreateShadowDescriptorSetLayout();
 			CreateDescriptorPool();
+			CreateShadowDescriptorPool();
 			AllocateDescriptorSet();
+			AllocateShadowDescriptorSet();
 			CreateUniformBuffers();
+			CreateShadowUniformBuffers();
 			UpdateDescriptorSet();
-			CreateVertexBuffer();
+			UpdateShadowPassDescriptorSet();
 			CreateGraphicsPipeline();
-			std::string modelPath(std::string(PHONG_PROJECT_CONTENT) + "Nyotengu.gltf");
+			CreateShadowPipeline();
+			std::string modelPath(std::string(SHADOW_MAPPING_PROJECT_CONTENT) + "Nyotengu.gltf");
 			NyotenguModel.loadFromFile(modelPath, selectedPhysicalDevice, device.Get(), queue, graphicsCommandPool.Get(), 1.0f);
+			std::string modelPath2(std::string(SHADOW_MAPPING_PROJECT_CONTENT) + "NyotenguGround.gltf");
+			NyotenguModel_Ground.loadFromFile(modelPath2, selectedPhysicalDevice, device.Get(), queue, graphicsCommandPool.Get(), 1.0f);
 		}
 		catch (std::exception& e)
 		{
@@ -1381,7 +1937,7 @@ namespace BadgerSandbox
 		}
 	}
 
-	PhongShading::~PhongShading()
+	ShadowMapping::~ShadowMapping()
 	{
 	}
 }
@@ -1427,33 +1983,33 @@ void KeyCallBack(GLFWwindow* window, int key, int scancode, int action, int mods
 int main()
 {
     std::cout << "Simple Phong Shading!" << std::endl;
-    BadgerSandbox::PhongShading phongShading;
+    BadgerSandbox::ShadowMapping shadowMapping;
 	// TODO: This is a horrible hack, create a service that propagates window events
-	glfwSetKeyCallback((GLFWwindow*)phongShading.window->GetNativeWindow(), KeyCallBack);
-	while (!phongShading.window->ShouldWindowClose())
+	glfwSetKeyCallback((GLFWwindow*)shadowMapping.window->GetNativeWindow(), KeyCallBack);
+	while (!shadowMapping.window->ShouldWindowClose())
 	{
 		switch (pressDirection)
 		{
 		case 1:
 			pressDirection = 0;
-			phongShading.RotateHorizontal(glm::radians(5.0f));
+			shadowMapping.RotateHorizontal(glm::radians(5.0f));
 		break;
 		case 2:
 			pressDirection = 0;
-			phongShading.RotateHorizontal(glm::radians(-5.0f));
+			shadowMapping.RotateHorizontal(glm::radians(-5.0f));
 			break;
 		case 3:
 			pressDirection = 0;
-			phongShading.RotateVertical(glm::radians(5.0f));
+			shadowMapping.RotateVertical(glm::radians(5.0f));
 			break;
 		case 4:
 			pressDirection = 0;
-			phongShading.RotateVertical(glm::radians(-5.0f));
+			shadowMapping.RotateVertical(glm::radians(-5.0f));
 			break;
 		default: break;
 
 		}
-		phongShading.Draw();
+		shadowMapping.Draw();
 	}
     return 0;
 }

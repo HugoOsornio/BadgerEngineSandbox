@@ -27,5 +27,14 @@ void main()
 
   vec4 objectColor = vec4(0.5, 0.5, 0.5, 1.0);
   vec4 ambient = vec4(0.1, 0.1, 0.1, 1.0);  
+  
+  // attenuation
+  float distance = length(vec3(g_ubo.lightPosition) - fragmentPosition);
+  float attenuation = 1.0 / (1.0f + 0.09 * distance + 0.032 * (distance * distance)); 
+  
+  ambient  *= attenuation;
+  diffuse  *= attenuation;
+  specular *= attenuation; 
+  
   outputColor =  (ambient + diffuse + specular) * objectColor;
 }
